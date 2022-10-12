@@ -69,20 +69,15 @@ async function run(): Promise<void> {
         return previousData == null || !isEqual(previousData, newData);
       });
 
-    const chunks = chunk(enabledFeatures, config.publishChunkSize);
     logger.log(
       `Publishing ${enabledFeatures.length} changed data-points to MQTT`,
     );
-    for (const c of chunks) {
-      await Promise.all(
-        c.map(async (f) => {
-          const { topic, ...data } = f;
-          await publisher.publish(topic, data);
-        }),
-      );
-      c.forEach(({ topic, ...data }) => previousMap.set(topic, data));
+    for (const f of enabledFeatures) {
+      const { topic, ...data } = f;
+      await publisher.publish(topic, data);
     }
     logger.log("Published.");
+    enabledFeatures.forEach(({ topic, ...data }) => previousMap.set(topic, data));
   }
 
   for (;;) {

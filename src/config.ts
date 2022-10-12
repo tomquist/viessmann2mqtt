@@ -82,7 +82,6 @@ export function getConfig() {
     mqttPassword: stringEnvVar("V2M_MQTT_PASSWORD", null),
     mqttRetain: boolEnvVar("V2M_MQTT_RETAIN"),
     mqttTopic: stringEnvVar("V2M_MQTT_TOPIC", "viessmann"),
-    publishChunkSize: intEnvVar("V2M_PUBLISH_CHUNK_SIZE", 10),
     verbose: boolEnvVar("V2M_VERBOSE", false),
   };
 }

@@ -13,14 +13,17 @@ export class Publisher {
   ) {}
 
   private async getClient() {
-    if (this.client && this.client.connected) {
+    if (this.client) {
+      if (!this.client.connected) {
+        await this.client.reconnect();
+      }
       return this.client;
     }
-    await this.client?.end();
     this.client = await connectAsync(this.url, {
       clientId: this.clientId,
       username: this.username,
       password: this.password,
+      keepalive: 10
     });
     return this.client;
   }
