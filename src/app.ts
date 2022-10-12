@@ -1,10 +1,10 @@
-import MQTT from "async-mqtt";
 import { ViessmannApi } from "./api";
 import { anonymizeConfig, getConfig } from "./config";
 import { consoleLogger } from "./logger";
 import { chunk, isEqual } from "lodash";
 import { Property } from "./models";
 import { sleep } from "./utils";
+import { Publisher } from "./publish";
 
 const config = getConfig();
 const logger = consoleLogger(config.verbose);
@@ -28,6 +28,8 @@ async function run(): Promise<void> {
   string,
   { timestamp: string; properties: Record<string, Property> }
   > = new Map();
+
+  const publisher = new Publisher(config.mqttUrl, config.mqttRetain, config.mqttClientId.length > 0 ? config.mqttClientId : undefined, config.mqttUsername, config.mqttPassword);
   async function fetchAndPublish(
     installationId: number,
     gatewaySerial: string,
@@ -68,13 +70,6 @@ async function run(): Promise<void> {
       });
 
     const chunks = chunk(enabledFeatures, config.publishChunkSize);
-
-    const mqttClient = await MQTT.connectAsync(config.mqttUrl, {
-      clientId:
-        config.mqttClientId.length > 0 ? config.mqttClientId : undefined,
-      username: config.mqttUsername,
-      password: config.mqttPassword,
-    });
     logger.log(
       `Publishing ${enabledFeatures.length} changed data-points to MQTT`,
     );
@@ -82,14 +77,11 @@ async function run(): Promise<void> {
       await Promise.all(
         c.map(async (f) => {
           const { topic, ...data } = f;
-          await mqttClient.publish(topic, JSON.stringify(data), {
-            retain: config.mqttRetain,
-          });
+          await publisher.publish(topic, data);
         }),
       );
       c.forEach(({ topic, ...data }) => previousMap.set(topic, data));
     }
-    await mqttClient.end();
     logger.log("Published.");
   }
 
