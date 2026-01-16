@@ -39,10 +39,12 @@ export class ViessmannApi {
 
   constructor(options: Options) {
     const auth = {
-      accessTokenUri: "https://iam.viessmann.com/idp/v2/token",
-      authorizationUri: "https://iam.viessmann.com/idp/v2/authorize",
-      scopes: ["IoT User", "offline_access"],
-      ...options.auth,
+      accessTokenUri: options.auth.accessTokenUri ?? "https://iam.viessmann-climatesolutions.com/idp/v3/token",
+      authorizationUri: options.auth.authorizationUri ?? "https://iam.viessmann-climatesolutions.com/idp/v3/authorize",
+      scopes: options.auth.scopes ?? ["IoT User", "offline_access"],
+      clientId: options.auth.clientId,
+      clientSecret: options.auth.clientSecret,
+      redirectUri: options.auth.redirectUri ?? "https://localhost/redirect",
     };
     this.oAuthClient = new ClientOAuth2({
       clientId: auth.clientId,

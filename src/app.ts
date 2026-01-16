@@ -11,14 +11,24 @@ const logger = consoleLogger(config.verbose);
 
 async function run(): Promise<void> {
   logger.log(JSON.stringify(anonymizeConfig(config)));
+  const auth = {
+    clientId: config.clientId,
+    redirectUri: config.redirectUri,
+    scopes: config.scopes,
+    ...(config.clientSecret != null
+      ? { clientSecret: config.clientSecret }
+      : {}),
+    ...(config.accessTokenUri != null
+      ? { accessTokenUri: config.accessTokenUri }
+      : {}),
+    ...(config.authorizationUri != null
+      ? { authorizationUri: config.authorizationUri }
+      : {}),
+  };
   const api = new ViessmannApi({
     credentials: { username: config.username, password: config.password },
-    auth: {
-      clientId: config.clientId,
-      clientSecret: config.clientSecret,
-      redirectUri: config.redirectUri,
-      scopes: config.scopes,
-    },
+    ...(config.baseUrl != null ? { baseUrl: config.baseUrl } : {}),
+    auth,
     logger,
   });
   logger.log("Getting installations...");
