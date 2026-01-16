@@ -1,10 +1,11 @@
-import { ViessmannApi } from "./api";
-import { anonymizeConfig, getConfig } from "./config";
-import { consoleLogger } from "./logger";
-import { chunk, isEqual } from "lodash";
-import { Property } from "./models";
-import { sleep } from "./utils";
-import { Publisher } from "./publish";
+import { ViessmannApi } from "./api.js";
+import { anonymizeConfig, getConfig } from "./config.js";
+import { consoleLogger } from "./logger.js";
+import _ from "lodash";
+const isEqual = (a: unknown, b: unknown): boolean => _.isEqual(a, b);
+import { Feature, Property } from "./models.js";
+import { sleep } from "./utils.js";
+import { Publisher } from "./publish.js";
 
 const config = getConfig();
 const logger = consoleLogger(config.verbose);
@@ -60,10 +61,10 @@ async function run(): Promise<void> {
     logger.log(`Fetched ${features.data.length} features`);
     const enabledFeatures = features.data
       .filter(
-        (feature) =>
+        (feature: Feature) =>
           feature.isEnabled && Object.values(feature.properties).length > 0,
       )
-      .map((feature) => {
+      .map((feature: Feature) => {
         return {
           topic: `${
             config.mqttTopic
@@ -74,7 +75,7 @@ async function run(): Promise<void> {
           properties: feature.properties,
         };
       })
-      .filter(({ topic, ...newData }) => {
+      .filter(({ topic, ...newData }: { topic: string; timestamp: string; properties: Record<string, Property> }) => {
         const previousData = previousMap.get(topic);
         return previousData == null || !isEqual(previousData, newData);
       });
@@ -87,7 +88,7 @@ async function run(): Promise<void> {
       await publisher.publish(topic, data);
     }
     logger.log("Published.");
-    enabledFeatures.forEach(({ topic, ...data }) => previousMap.set(topic, data));
+    enabledFeatures.forEach(({ topic, ...data }: { topic: string; timestamp: string; properties: Record<string, Property> }) => previousMap.set(topic, data));
   }
 
   for (;;) {

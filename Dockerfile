@@ -1,17 +1,18 @@
-FROM node:18-alpine as build
+FROM node:20-alpine as build
 
 RUN mkdir /app
 WORKDIR /app
-COPY . .
-RUN npm ci \
-    && npm run build \
+COPY package*.json ./
+RUN npm ci --include=dev
+COPY tsconfig.json ./
+COPY src ./src
+RUN npm run build \
     && npm prune --production \
     && mkdir out \
     && mv bin out/ \
     && mv node_modules out/
 
-FROM alpine
-RUN apk add --update nodejs
+FROM node:20-alpine
 RUN mkdir /app
 WORKDIR /app
 COPY --from=build /app/out /app

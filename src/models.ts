@@ -21,8 +21,8 @@ export interface Device {
   id: string;
   boilerSerial: string;
   boilerSerialEditor: string;
-  bmuSerial: null;
-  bmuSerialEditor: null;
+  bmuSerial: string | null;
+  bmuSerialEditor: string | null;
   createdAt: string;
   editedAt: string;
   modelId: string;
@@ -34,8 +34,8 @@ export interface Device {
 export interface Gateway {
   serial: string;
   version: string;
-  firmwareUpdateFailureCounter: 0;
-  autoUpdate: false;
+  firmwareUpdateFailureCounter: number;
+  autoUpdate: boolean;
   createdAt: string;
   producedAt: string;
   lastStatusChangedAt: string;
@@ -57,7 +57,12 @@ export interface Installation {
   aggregatedStatus: string;
 }
 
+export interface Cursor {
+  next?: string;
+}
+
 export interface ViessmannResponse<T> {
+  cursor?: Cursor;
   data: T[];
 }
 

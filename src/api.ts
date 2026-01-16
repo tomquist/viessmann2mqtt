@@ -2,8 +2,8 @@ import { URLSearchParams } from "url";
 import fetch, { Response } from "node-fetch";
 import ClientOAuth2, { Token } from "client-oauth2";
 import pkceChallenge from "pkce-challenge";
-import { FeatureResponse, InstallationsResponse } from "./models";
-import { Logger } from "./logger";
+import { FeatureResponse, Installation, InstallationsResponse } from "./models.js";
+import { Logger } from "./logger.js";
 
 export interface Auth {
   clientId: string;
@@ -55,12 +55,12 @@ export class ViessmannApi {
       scopes: auth.scopes,
     });
     this.credentials = options.credentials;
-    this.baseUrl = options.baseUrl ?? "https://api.viessmann.com/iot/v1/";
+    this.baseUrl = options.baseUrl ?? "https://api.viessmann-climatesolutions.com";
     this.logger = options.logger ?? console;
   }
 
   private async login(): Promise<Token> {
-    const challenge = pkceChallenge();
+    const challenge = await pkceChallenge();
     const url = this.oAuthClient.code.getUri({
       query: {
         code_challenge: challenge.code_challenge,
@@ -127,10 +127,29 @@ export class ViessmannApi {
   }
 
   public async getInstallations(): Promise<InstallationsResponse> {
-    const response = await this.fetch("equipment/installations", {
-      params: { includeGateways: true },
-    });
-    return (await response.json()) as InstallationsResponse;
+    const allInstallations: Installation[] = [];
+    let cursor: string | undefined;
+
+    do {
+      const params: Record<string, string | boolean | number> = {
+        includeGateways: true,
+        limit: 1000,
+      };
+      if (cursor != null && cursor.length > 0) {
+        params.cursor = cursor;
+      }
+
+      const response = await this.fetch("iot/v2/equipment/installations", {
+        params,
+      });
+      const result = (await response.json()) as InstallationsResponse;
+      allInstallations.push(...result.data);
+      cursor = result.cursor?.next;
+    } while (cursor != null && cursor.length > 0);
+
+    return {
+      data: allInstallations,
+    };
   }
 
   public async getFeatures({
@@ -143,12 +162,28 @@ export class ViessmannApi {
     deviceId: string;
   }): Promise<FeatureResponse> {
     const response = await this.fetch(
-      `equipment/installations/${encodeURI(
+      `iot/v2/features/installations/${encodeURI(
         installationId.toString(),
       )}/gateways/${encodeURI(gatewayId)}/devices/${encodeURI(
         deviceId,
-      )}/features/`,
+      )}/features`,
     );
-    return (await response.json()) as FeatureResponse;
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(
+        `Failed to fetch features: ${response.status} ${response.statusText} - ${errorText}`,
+      );
+    }
+    const text = await response.text();
+    if (!text || text.trim().length === 0) {
+      this.logger.warn("Empty response from features endpoint, returning empty data");
+      return { data: [] };
+    }
+    try {
+      return JSON.parse(text) as FeatureResponse;
+    } catch (error) {
+      this.logger.error(`Failed to parse JSON response: ${text.substring(0, 200)}`);
+      throw new Error(`Invalid JSON response: ${error instanceof Error ? error.message : String(error)}`);
+    }
   }
 }

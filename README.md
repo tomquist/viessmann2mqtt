@@ -33,7 +33,7 @@ The app can be configured using these environment variables:
 - `V2M_AUTHORIZATION_URI` (optional): Override the OAuth authorization URL. Default `https://iam.viessmann-climatesolutions.com/idp/v3/authorize`
 - `V2M_REDIRECT_URL` (optional): Set this to customize the redirect URL. Default `https://localhost/redirect`
 - `V2M_SCOPES` (optional): Can be used to customize the scopes using a comma-separated list. Default `IoT User,offline_access` 
-- `V2M_BASE_URL` (optional): Override the Viessmann API base URL. Default `https://api.viessmann.com/iot/v1/`
+- `V2M_BASE_URL` (optional): Override the Viessmann API base URL. Default `https://api.viessmann-climatesolutions.com`
 - `V2M_POLL_INTERVAL` (optional): The polling interval in seconds (Default `60`) 
 - `V2M_MQTT_URI` (required): // The MQTT broker URL, e.g. `mqtt://host:1883`
 - `V2M_MQTT_USERNAME` (optional): // Optional username for MQTT authentication

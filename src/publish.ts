@@ -1,4 +1,5 @@
-import { AsyncMqttClient, connectAsync } from "async-mqtt";
+import asyncMqtt, { AsyncMqttClient } from "async-mqtt";
+const { connectAsync } = asyncMqtt;
 
 export class Publisher {
 
@@ -15,7 +16,7 @@ export class Publisher {
   private async getClient() {
     if (this.client) {
       if (!this.client.connected) {
-        await this.client.reconnect();
+        this.client.reconnect();
       }
       return this.client;
     }
@@ -23,7 +24,7 @@ export class Publisher {
       clientId: this.clientId,
       username: this.username,
       password: this.password,
-      keepalive: 10
+      keepalive: 10,
     });
     return this.client;
   }
