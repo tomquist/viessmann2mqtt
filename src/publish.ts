@@ -29,7 +29,16 @@ export class Publisher {
     return this.client;
   }
 
-  async publish(topic: string, message: any) {
-    await (await this.getClient()).publish(topic, JSON.stringify(message), { retain: this.retain });
+  async publish(topic: string, message: any, options?: { retain?: boolean }) {
+    const retain = options?.retain !== undefined ? options.retain : this.retain;
+    await (await this.getClient()).publish(topic, JSON.stringify(message), { retain });
+  }
+
+  /**
+   * Delete a retained MQTT message by publishing an empty payload with retain: true.
+   * This is the standard way to remove retained messages in MQTT.
+   */
+  async delete(topic: string) {
+    await (await this.getClient()).publish(topic, "", { retain: true });
   }
 }

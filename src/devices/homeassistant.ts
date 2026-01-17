@@ -1,6 +1,6 @@
 import { Device } from "./base.js";
 import { getDiscoverableMethods } from "./discovery.js";
-import { Feature as ApiFeature } from "../models.js";
+import { Feature as ApiFeature, Command } from "../models.js";
 
 // Re-export utility functions from homeassistant-utils for backward compatibility
 export {
@@ -91,18 +91,37 @@ export class HomeAssistantDiscovery {
    * All components are grouped under one device entry.
    * Features must be fetched externally and passed here.
    */
-  async generateDeviceDiscoveryConfig(
+  generateDeviceDiscoveryConfig(
     device: Device,
     features: ApiFeature[],
-  ): Promise<HomeAssistantDeviceDiscoveryConfig> {
+  ): HomeAssistantDeviceDiscoveryConfig {
     // Base device info
+    // ViCare integration uses format: {gateway_serial}_{device_serial} (with dashes replaced by underscores)
+    // Or: {gateway_serial}_{device_id} if device_serial is not available
+    // Try to get device serial from device model (boilerSerial) first, then from features
+    const deviceSerialFromModel = (device as any).deviceModel?.boilerSerial;
+    const deviceSerialFromFeature = device.getSerial();
+    const deviceSerial = deviceSerialFromModel || deviceSerialFromFeature;
+    
+    // Match ViCare identifier format exactly
+    // Format: {gateway_serial}_{device_serial} with dashes replaced by underscores
+    // Or: {gateway_serial}_{device_id} if no device serial
+    const vicareIdentifier = deviceSerial
+      ? `${this.gatewayId}_${deviceSerial.replace(/-/g, "_")}`
+      : `${this.gatewayId}_${this.deviceId}`;
+    
+    const identifiers = [vicareIdentifier];
+    
+    // Include our composite identifier for backwards compatibility
+    identifiers.push(`viessmann_${this.installationId}_${this.gatewayId}_${this.deviceId}`);
+    
     const deviceInfo = {
-      identifiers: [
-        `viessmann_${this.installationId}_${this.gatewayId}_${this.deviceId}`,
-      ],
+      identifiers,
       name: `${device.getModelId()} (${this.deviceId})`,
       manufacturer: "Viessmann",
       model: device.getModelId(),
+      // Include serial number if available (ViCare uses this)
+      ...(deviceSerial && { serial_number: deviceSerial }),
     };
 
     const origin = {
@@ -117,7 +136,10 @@ export class HomeAssistantDiscovery {
     }> = {};
 
     // First, get components from decorated methods to know which features are already handled
-    const decoratedComponents = await this.generateComponentsFromDecorators(device, features);
+    const decoratedComponents = this.generateComponentsFromDecorators(
+      device,
+      features,
+    );
     const decoratedFeaturePaths = new Set<string>();
     for (const component of Object.values(decoratedComponents)) {
       // Extract feature path from state_topic
@@ -136,7 +158,7 @@ export class HomeAssistantDiscovery {
     // are now generated declaratively via device.generateHomeAssistantComponents()
 
     // Enhance existing components with generic feature-based enhancement (unit normalization, device classes, etc.)
-    await this.enhanceComponentsFromFeatures(device, components, features);
+    this.enhanceComponentsFromFeatures(device, components, features);
 
     // Generate device-specific components
     const deviceComponents = device.generateHomeAssistantComponents(
@@ -162,8 +184,22 @@ export class HomeAssistantDiscovery {
     Object.assign(components, deviceComponents);
 
     // Generate components for all other enabled features that don't have decorators
-    const autoComponents = await this.generateComponentsFromAllFeatures(device, decoratedFeaturePaths, features);
+    const autoComponents = this.generateComponentsFromAllFeatures(
+      device,
+      decoratedFeaturePaths,
+      features,
+    );
     Object.assign(components, autoComponents);
+
+    // Generate command-enabled components for features with executable commands
+    const commandComponents = this.generateCommandComponentsFromFeatures(
+      components,
+      features,
+    );
+    Object.assign(components, commandComponents);
+
+    // Enhance components with command topics where applicable
+    this.enhanceComponentsWithCommands(components, features);
 
     return {
       device: deviceInfo,
@@ -176,10 +212,10 @@ export class HomeAssistantDiscovery {
   /**
    * Generate component configs from decorated methods.
    */
-  private async generateComponentsFromDecorators(
+  private generateComponentsFromDecorators(
     device: Device,
     features: ApiFeature[],
-  ): Promise<Record<string, { platform: string; unique_id?: string; [key: string]: any }>> {
+  ): Record<string, { platform: string; unique_id?: string; [key: string]: any }> {
     const components: Record<string, { platform: string; unique_id?: string; [key: string]: any }> = {};
     const discoverableMethods = getDiscoverableMethods(device);
 
@@ -241,7 +277,22 @@ export class HomeAssistantDiscovery {
         }
       }
 
-       
+      // Set entity_category for diagnostic/config sensors
+      // Get feature properties for category determination
+      const feature = features.find((f: ApiFeature) => f.feature === metadata.featurePath);
+      if (feature && feature.properties) {
+        const entityCategory = HomeAssistantDiscovery.determineEntityCategory(
+          metadata.featurePath,
+          metadata.platform,
+          metadata.deviceClass,
+          feature.properties as Record<string, unknown>,
+        );
+        if (entityCategory) {
+          componentConfig.entity_category = entityCategory;
+          componentConfig.ent_cat = entityCategory; // Abbreviation
+        }
+      }
+
       components[componentKey] = componentConfig;
     }
 
@@ -458,11 +509,11 @@ export class HomeAssistantDiscovery {
    * This replaces device-specific enhancement logic by analyzing features
    * and enhancing components based on their actual properties.
    */
-  private async enhanceComponentsFromFeatures(
+  private enhanceComponentsFromFeatures(
     device: Device,
     components: Record<string, { platform: string; unique_id?: string; [key: string]: any }>,
     features: ApiFeature[],
-  ): Promise<void> {
+  ): void {
     // Use provided features instead of fetching again
 
     // Create feature map: featurePath -> feature
@@ -633,11 +684,21 @@ export class HomeAssistantDiscovery {
 
   /**
    * Find property path for regular sensors using priority rules.
+   * Prioritizes numeric properties when a unit is present to avoid type mismatches.
    */
   private static findSensorPropertyPath(
     featurePath: string,
     properties: Record<string, unknown>,
   ): string {
+    // Check if any property has a unit (indicates numeric value expected)
+    const hasUnitProperty = Object.values(properties).some(
+      (prop) =>
+        prop &&
+        typeof prop === "object" &&
+        "unit" in prop &&
+        prop.unit !== undefined,
+    );
+
     // Determine priority list based on feature path
     let priority: string[];
     if (featurePath.includes("temperature") || featurePath.includes("pressure")) {
@@ -646,6 +707,26 @@ export class HomeAssistantDiscovery {
       priority = this.PROPERTY_PATH_PRIORITY.summary;
     } else {
       priority = this.PROPERTY_PATH_PRIORITY.default;
+    }
+
+    // If a unit is present, prioritize numeric properties over arrays
+    if (hasUnitProperty) {
+      // First, try to find a numeric property with a unit
+      for (const key of Object.keys(properties)) {
+        const prop = properties[key] as
+          | { value?: unknown; unit?: string; type?: string }
+          | undefined;
+        if (
+          prop &&
+          typeof prop === "object" &&
+          "value" in prop &&
+          prop.unit !== undefined &&
+          (prop.type === "number" ||
+            typeof prop.value === "number")
+        ) {
+          return `${key}.value`;
+        }
+      }
     }
 
     // Try priority keys first
@@ -667,7 +748,12 @@ export class HomeAssistantDiscovery {
         continue;
       }
 
-      // Handle array values
+      // Skip array properties if we have a unit (expect numeric)
+      if (hasUnitProperty && Array.isArray(prop.value)) {
+        continue;
+      }
+
+      // Handle array values (only if no unit expected)
       if (
         (key === "day" ||
           key === "week" ||
@@ -696,6 +782,10 @@ export class HomeAssistantDiscovery {
 
       const prop = properties[key] as Record<string, unknown> | undefined;
       if (prop && typeof prop === "object" && "value" in prop) {
+        // Skip array properties if we have a unit (expect numeric)
+        if (hasUnitProperty && Array.isArray(prop.value)) {
+          continue;
+        }
         if (Array.isArray(prop.value)) {
           return `${key}.value[0]`;
         }
@@ -718,15 +808,893 @@ export class HomeAssistantDiscovery {
       .replace(/^_|_$/g, "");
   }
 
+  private static getExecutableCommands(
+    feature: ApiFeature,
+  ): Array<[string, Command]> {
+    return Object.entries(feature.commands ?? {}).filter(
+      ([, command]) => command.isExecutable,
+    );
+  }
+
+  private generateCommandTopic(featurePath: string, commandName: string): string {
+    return `${this.baseTopic}/installations/${this.installationId}/gateways/${this.gatewayId}/devices/${this.deviceId}/features/${featurePath}/commands/${commandName}/set`;
+  }
+
+  private static buildSingleParamCommandTemplate(
+    paramName: string,
+    paramType: string,
+  ): string {
+    if (paramType === "number") {
+      return `{"${paramName}": {{ value | float }}}`;
+    }
+    return `{"${paramName}": {{ value | tojson }}}`;
+  }
+
+  private static buildModeCommandTemplate(
+    paramName: string,
+    allowedModes?: string[],
+  ): string {
+    const hasStandby = allowedModes?.includes("standby");
+    const hasHeating = allowedModes?.includes("heating");
+    return `{% set mode = value %}{% if mode == "off" %}{% set mode = "${hasStandby ? "standby" : "off"}" %}{% elif mode == "heat" %}{% set mode = "${hasHeating ? "heating" : "heat"}" %}{% elif mode == "auto" %}{% set mode = "${hasHeating ? "heating" : "auto"}" %}{% endif %}{"${paramName}": "{{ mode }}"}`;
+  }
+
+  private static buildCommandComponentName(
+    featureName: string,
+    commandName: string,
+    paramName?: string,
+  ): string {
+    const commandLabel = commandName
+      .replace(/([A-Z])/g, " $1")
+      .replace(/^./, (str) => str.toUpperCase())
+      .trim();
+    if (paramName) {
+      const paramLabel = paramName
+        .replace(/([A-Z])/g, " $1")
+        .replace(/^./, (str) => str.toUpperCase())
+        .trim();
+      return `${featureName} ${commandLabel} ${paramLabel}`.trim();
+    }
+    return `${featureName} ${commandLabel}`.trim();
+  }
+
+  private static getCommandStateConfig(
+    feature: ApiFeature,
+    paramName: string,
+    featurePath: string,
+    baseTopic: string,
+    installationId: number,
+    gatewayId: string,
+    deviceId: string,
+  ): {
+    state_topic: string;
+    value_template: string;
+    unit_of_measurement?: string;
+  } | null {
+    const properties = feature.properties as Record<string, unknown> | undefined;
+    
+    // Try exact match first
+    let prop = properties?.[paramName] as
+      | { value?: unknown; unit?: string; type?: string }
+      | undefined;
+    let propertyName = paramName;
+    
+    // If no exact match, try semantic matching (e.g., targetTemperature -> temperature)
+    if (!prop || typeof prop !== "object" || !("value" in prop)) {
+      const semanticMatches: Record<string, string[]> = {
+        // Temperature-related
+        targetTemperature: ["temperature", "temp", "value"],
+        targetTemp: ["temperature", "temp", "value"],
+        temperature: ["temperature", "temp", "value"],
+        temp: ["temperature", "temp", "value"],
+        // Mode-related (mode parameter -> value property)
+        mode: ["value", "mode"],
+        // Gas type (gasType parameter -> value property)
+        gasType: ["value", "type"],
+        // Active/boolean state
+        active: ["active", "value", "enabled"],
+        // Schedule-related (newSchedule parameter -> entries property)
+        newSchedule: ["entries", "schedule", "value"],
+        // Weekday-related (weekday parameter -> weekdays property)
+        weekday: ["weekdays", "weekday", "value"],
+      };
+      
+      const candidates = semanticMatches[paramName] ?? [];
+      // Also try "value" as a fallback for enum/string properties
+      if (!candidates.includes("value")) {
+        candidates.push("value");
+      }
+      
+      for (const candidate of candidates) {
+        prop = properties?.[candidate] as
+          | { value?: unknown; unit?: string; type?: string }
+          | undefined;
+        if (prop && typeof prop === "object" && "value" in prop) {
+          propertyName = candidate;
+          break;
+        }
+      }
+    }
+    
+    if (!prop || typeof prop !== "object" || !("value" in prop)) {
+      return null;
+    }
+    
+    const unit = prop.unit;
+    const normalizedUnit = unit ? normalizeUnit(unit) : undefined;
+    
+    // Handle array properties (like weekdays) - extract first element for state
+    // For select components with enum, we want the first element of the array
+    const isArrayProperty = prop.type === "array" && Array.isArray(prop.value);
+    const valueTemplate = isArrayProperty
+      ? `{% if value_json.properties.${propertyName}.value is defined and value_json.properties.${propertyName}.value|length > 0 %}{{ value_json.properties.${propertyName}.value[0] }}{% endif %}`
+      : safeValueTemplate(`${propertyName}.value`, prop.type === "boolean");
+    
+    return {
+      state_topic: `${baseTopic}/installations/${installationId}/gateways/${gatewayId}/devices/${deviceId}/features/${featurePath}`,
+      value_template: valueTemplate,
+      ...(normalizedUnit ? { unit_of_measurement: normalizedUnit } : {}),
+    };
+  }
+
+  private enhanceComponentsWithCommands(
+    components: Record<string, { platform: string; unique_id?: string; [key: string]: any }>,
+    features: ApiFeature[],
+  ): void {
+    const featureMap = new Map(
+      features.map((feature) => [feature.feature, feature] as [string, ApiFeature]),
+    );
+
+    for (const component of Object.values(components)) {
+      const platform = component.platform;
+      if (platform !== "climate") {
+        continue;
+      }
+
+      const featurePath = HomeAssistantDiscovery.extractFeaturePath(
+        component.state_topic as string | undefined,
+      );
+      if (!featurePath) {
+        continue;
+      }
+      const feature = featureMap.get(featurePath);
+      if (!feature || !feature.commands) {
+        continue;
+      }
+
+      if (!component.mode_command_topic) {
+        const modeCommand =
+          feature.commands.setMode ??
+          Object.values(feature.commands).find((command) =>
+            Object.keys(command.params ?? {}).includes("mode"),
+          );
+        if (modeCommand?.isExecutable) {
+          const [paramName, paramDef] =
+            Object.entries(modeCommand.params ?? {})[0] ?? ["mode", { type: "string" }];
+          const allowedModes =
+            (paramDef.constraints as { enum?: string[] } | undefined)?.enum ??
+            undefined;
+          component.mode_command_topic = this.generateCommandTopic(
+            featurePath,
+            modeCommand.name,
+          );
+          component.mode_command_template =
+            HomeAssistantDiscovery.buildModeCommandTemplate(
+              paramName,
+              allowedModes,
+            );
+        }
+      }
+
+      if (!component.temperature_command_topic) {
+        const temperatureCommand = Object.values(feature.commands).find((command) => {
+          const params = Object.entries(command.params ?? {});
+          if (params.length !== 1) {
+            return false;
+          }
+          const [paramName, paramDef] = params[0];
+          return (
+            command.isExecutable &&
+            paramDef.type === "number" &&
+            paramName.toLowerCase().includes("temperature")
+          );
+        });
+        if (temperatureCommand) {
+          const [paramName, paramDef] =
+            Object.entries(temperatureCommand.params ?? {})[0] ?? [
+              "targetTemperature",
+              { type: "number" },
+            ];
+          component.temperature_command_topic = this.generateCommandTopic(
+            featurePath,
+            temperatureCommand.name,
+          );
+          component.temperature_command_template =
+            HomeAssistantDiscovery.buildSingleParamCommandTemplate(
+              paramName,
+              paramDef.type,
+            );
+        }
+      }
+    }
+  }
+
+  /**
+   * Add service command properties to a component config if it's a service technician command.
+   * Sets enabled_by_default to false and entity_category to config so entities are disabled by default in Home Assistant.
+   * Only sets entity_category for command/control components (number, select, switch, button, text), not sensors.
+   */
+  private static addServiceCommandProperties(
+    component: { platform: string; unique_id?: string; [key: string]: any },
+    isServiceCommand: boolean,
+  ): void {
+    if (isServiceCommand) {
+      // Use both full name and abbreviation for compatibility
+      component.enabled_by_default = false;
+      component.en = false; // Abbreviation for MQTT discovery
+      // entity_category: "config" marks command/control entities as configuration-only
+      // Only set for non-sensor platforms to avoid hiding sensor components
+      const isCommandComponent = ["number", "select", "switch", "button", "text", "climate"].includes(component.platform);
+      if (isCommandComponent) {
+        component.entity_category = "config";
+        component.ent_cat = "config"; // Abbreviation for MQTT discovery
+      }
+    }
+  }
+
+  /**
+   * Check if a feature path is a service technician feature.
+   * These features are for calibration, configuration, and device management
+   * and should be disabled by default.
+   */
+  private static isServiceTechnicianFeature(featurePath: string): boolean {
+    // Configuration features are service-only
+    if (featurePath.includes(".configuration.")) {
+      return true;
+    }
+
+    // Screed drying programs (construction/renovation only)
+    // These programs can cause excessive heating and should be supervised by professionals
+    if (featurePath.includes(".screedDrying")) {
+      return true;
+    }
+
+    return false;
+  }
+
+  /**
+   * Determine entity category based on feature path and properties.
+   * Returns "diagnostic" for diagnostic sensors, "config" for configuration command components,
+   * or undefined for primary entities.
+   * Note: Sensors cannot have entity_category: "config" - only command/control components can.
+   */
+  private static determineEntityCategory(
+    featurePath: string,
+    platform: string,
+    deviceClass: string | undefined,
+    properties: Record<string, unknown>,
+  ): "diagnostic" | "config" | undefined {
+    // Service technician configuration features should be diagnostic category for sensors
+    // Only command/control components can use "config" category
+    if (HomeAssistantDiscovery.isServiceTechnicianFeature(featurePath)) {
+      // Service technician sensors should use "diagnostic" category, not "config"
+      if (platform === "sensor" || platform === "binary_sensor") {
+        return "diagnostic";
+      }
+    }
+
+    // Diagnostic sensors: connection status, error codes, signal strength
+    if (
+      featurePath.includes(".status") ||
+      featurePath.includes(".error") ||
+      featurePath.includes(".signal") ||
+      featurePath.includes(".rssi") ||
+      featurePath.includes("connection") ||
+      featurePath.includes("firmware") ||
+      featurePath.includes("software") ||
+      featurePath.includes("version")
+    ) {
+      return "diagnostic";
+    }
+
+    // Historical/time-based data (week/month/year) is diagnostic
+    if (
+      featurePath.includes("consumption") ||
+      featurePath.includes("production") ||
+      featurePath.includes("statistics")
+    ) {
+      // Check if this is historical data (has week/month/year properties)
+      const hasHistoricalData =
+        "week" in properties ||
+        "month" in properties ||
+        "year" in properties ||
+        "currentMonth" in properties ||
+        "currentYear" in properties ||
+        "lastMonth" in properties ||
+        "lastYear" in properties;
+      if (hasHistoricalData) {
+        return "diagnostic";
+      }
+    }
+
+    // Count sensors (diagnostic counters) are diagnostic
+    if (
+      Object.keys(properties).some((key) =>
+        /^count(One|Two|Three|Four|Five|Six|Seven)$/.test(key),
+      )
+    ) {
+      return "diagnostic";
+    }
+
+    // Primary entities (temperature, active status, current consumption) have no category
+    return undefined;
+  }
+
+  /**
+   * Check if a command should be filtered out as service technician only.
+   * These commands are for calibration, configuration, and device management
+   * and should not be exposed to end users.
+   */
+  private static isServiceTechnicianCommand(
+    commandName: string,
+    featurePath: string,
+  ): boolean {
+    // Commands in service technician features are service-only
+    if (HomeAssistantDiscovery.isServiceTechnicianFeature(featurePath)) {
+      return true;
+    }
+
+    // Service technician command names
+    const serviceCommandNames = [
+      "setAltitude", // House location configuration
+      "reset", // Reset to defaults (but resetSchedule is user-facing)
+      "setOrientation", // House orientation configuration
+      "setNormalRange", // Pressure calibration
+      "setHysteresis", // Calibration
+      "setHysteresisSwitchOnValue", // Calibration
+      "setHysteresisSwitchOffValue", // Calibration
+      "setMinimumLimit", // Limit configuration
+      "setMaximumLimit", // Limit configuration
+      "setDefaultLimit", // Limit configuration
+      "removeController", // Device management
+      "removeZigbeeController", // Device management
+    ];
+
+    // Exclude resetSchedule from service commands (it's user-facing)
+    if (commandName === "reset" && featurePath.includes(".schedule")) {
+      return false;
+    }
+
+    return serviceCommandNames.includes(commandName);
+  }
+
+  private generateCommandComponentsFromFeatures(
+    components: Record<string, { platform: string; unique_id?: string; [key: string]: any }>,
+    features: ApiFeature[],
+  ): Record<string, { platform: string; unique_id?: string; [key: string]: any }> {
+    const commandComponents: Record<
+      string,
+      { platform: string; unique_id?: string; [key: string]: any }
+    > = {};
+
+    const componentsByFeature = new Map<
+      string,
+      Array<{ key: string; component: { platform: string; [key: string]: any } }>
+    >();
+
+    Object.entries(components).forEach(([componentKey, component]) => {
+      const featurePath = HomeAssistantDiscovery.extractFeaturePath(
+        component.state_topic as string | undefined,
+      );
+      if (!featurePath) {
+        return;
+      }
+      const list = componentsByFeature.get(featurePath) ?? [];
+      list.push({ key: componentKey, component });
+      componentsByFeature.set(featurePath, list);
+    });
+
+    for (const feature of features) {
+      const executableCommands = HomeAssistantDiscovery.getExecutableCommands(
+        feature,
+      );
+      if (executableCommands.length === 0) {
+        continue;
+      }
+
+      const featureComponents = componentsByFeature.get(feature.feature) ?? [];
+      const hasClimate = featureComponents.some(
+        ({ component }) => component.platform === "climate",
+      );
+      const featureName = getFeatureName(feature.feature);
+      const baseKey = HomeAssistantDiscovery.generateComponentKey(feature.feature);
+
+      for (const [commandName, command] of executableCommands) {
+        if (commandName === "setMode" && hasClimate) {
+          continue;
+        }
+
+        // Check if this is a service technician command
+        const isServiceCommand = HomeAssistantDiscovery.isServiceTechnicianCommand(
+          commandName,
+          feature.feature,
+        );
+
+        const params = Object.entries(command.params ?? {});
+        if (params.length === 0) {
+          const componentKey = `${baseKey}_${commandName}`.toLowerCase();
+          if (components[componentKey] || commandComponents[componentKey]) {
+            continue;
+          }
+          const component: { platform: string; unique_id?: string; [key: string]: any } = {
+            platform: "button",
+            unique_id: `viessmann_${this.installationId}_${this.gatewayId}_${this.deviceId}_${componentKey}`,
+            name: HomeAssistantDiscovery.buildCommandComponentName(
+              featureName,
+              commandName,
+            ),
+            command_topic: this.generateCommandTopic(feature.feature, commandName),
+            payload_press: "{}",
+          };
+          HomeAssistantDiscovery.addServiceCommandProperties(component, isServiceCommand);
+          commandComponents[componentKey] = component;
+          continue;
+        }
+
+        if (commandName === "setCurve") {
+          const slopeParam = params.find(([name]) => name === "slope");
+          const shiftParam = params.find(([name]) => name === "shift");
+          if (slopeParam && shiftParam) {
+            for (const [paramName, paramDef] of [slopeParam, shiftParam]) {
+              const componentKey = `${baseKey}_${commandName}_${paramName}`.toLowerCase();
+              if (components[componentKey] || commandComponents[componentKey]) {
+                continue;
+              }
+              const stateConfig =
+                HomeAssistantDiscovery.getCommandStateConfig(
+                  feature,
+                  paramName,
+                  feature.feature,
+                  this.baseTopic,
+                  this.installationId,
+                  this.gatewayId,
+                  this.deviceId,
+                );
+              
+              // Skip creating component if we can't get a value (no matching property)
+              if (!stateConfig) {
+                continue;
+              }
+              
+              const constraints = paramDef.constraints as {
+                min?: number;
+                max?: number;
+                stepping?: number;
+              } | undefined;
+              const component: { platform: string; unique_id?: string; [key: string]: any } = {
+                platform: "number",
+                unique_id: `viessmann_${this.installationId}_${this.gatewayId}_${this.deviceId}_${componentKey}`,
+                name: HomeAssistantDiscovery.buildCommandComponentName(
+                  featureName,
+                  commandName,
+                  paramName,
+                ),
+                command_topic: this.generateCommandTopic(
+                  feature.feature,
+                  commandName,
+                ),
+                command_template:
+                  HomeAssistantDiscovery.buildSingleParamCommandTemplate(
+                    paramName,
+                    paramDef.type,
+                  ),
+                mode: "box",
+                ...(constraints?.min !== undefined ? { min: constraints.min } : {}),
+                ...(constraints?.max !== undefined ? { max: constraints.max } : {}),
+                ...(constraints?.stepping !== undefined
+                  ? { step: constraints.stepping }
+                  : {}),
+                ...stateConfig,
+              };
+              HomeAssistantDiscovery.addServiceCommandProperties(component, isServiceCommand);
+              commandComponents[componentKey] = component;
+            }
+            continue;
+          }
+        }
+
+        // Special handling for Schedule-type commands
+        // Check BEFORE single-param handling to prevent Schedule commands from being processed as regular single-param commands
+        if (params.length === 1) {
+          const [_paramName, paramDef] = params[0];
+          if (paramDef.type === "Schedule") {
+            const properties = feature.properties as Record<string, unknown> | undefined;
+            const entriesProp = properties?.entries as { type?: string; value?: unknown } | undefined;
+            
+            // Only create sensor if we have a matching property with a meaningful value
+            // Check that value exists, is not null, and if it's an object, has at least one key
+            const hasValue = entriesProp?.value !== undefined && 
+                           entriesProp.value !== null &&
+                           (typeof entriesProp.value !== "object" || Object.keys(entriesProp.value as Record<string, unknown>).length > 0);
+            
+            if (entriesProp && entriesProp.type === "Schedule" && hasValue) {
+              // Create a sensor to display the current schedule (read-only)
+              // Use a simple state value (count of configured days) instead of full JSON
+              const scheduleSensorKey = `${baseKey}_schedule`.toLowerCase();
+              if (!components[scheduleSensorKey] && !commandComponents[scheduleSensorKey]) {
+                const component: { platform: string; unique_id?: string; [key: string]: any } = {
+                  platform: "sensor",
+                  unique_id: `viessmann_${this.installationId}_${this.gatewayId}_${this.deviceId}_${scheduleSensorKey}`,
+                  name: `${featureName} Schedule`,
+                  state_topic: `${this.baseTopic}/installations/${this.installationId}/gateways/${this.gatewayId}/devices/${this.deviceId}/features/${feature.feature}`,
+                  // Use a simple state: count of days with entries, or "configured" if schedule exists
+                  // Home Assistant sensors require simple string states (max 255 chars), not JSON objects
+                  // Extract a simple summary instead of the full JSON to avoid exceeding state length limit
+                  // Use a very simple template that always returns a short string (max ~20 chars)
+                  // Check if entries.value exists and is a dict, then count keys, otherwise show "configured"
+                  // Simplified to avoid template errors - always returns a short string
+                  value_template: "{% if value_json.properties.entries.value is defined %}{% set sched = value_json.properties.entries.value %}{% if sched is mapping %}{{ sched.keys() | list | length }} days{% else %}configured{% endif %}{% else %}not configured{% endif %}",
+                  json_attributes_topic: `${this.baseTopic}/installations/${this.installationId}/gateways/${this.gatewayId}/devices/${this.deviceId}/features/${feature.feature}`,
+                  json_attributes_template: "{{ value_json.properties.entries.value | tojson }}",
+                };
+                // Schedule commands are not service commands, but if setSchedule is service, mark sensor as disabled
+                HomeAssistantDiscovery.addServiceCommandProperties(component, isServiceCommand);
+                commandComponents[scheduleSensorKey] = component;
+              }
+            }
+            
+            // Skip creating any component for Schedule commands (with or without values)
+            // Schedule commands should be triggered via MQTT service calls in automations
+            // Command topic: {baseTopic}/installations/{id}/gateways/{gw}/devices/{dev}/features/{feature}/commands/{commandName}/set
+            continue;
+          }
+        }
+
+        if (params.length === 1) {
+          const [paramName, paramDef] = params[0];
+          const componentKey = `${baseKey}_${commandName}_${paramName}`.toLowerCase();
+          if (components[componentKey] || commandComponents[componentKey]) {
+            continue;
+          }
+
+          const stateConfig =
+            HomeAssistantDiscovery.getCommandStateConfig(
+              feature,
+              paramName,
+              feature.feature,
+              this.baseTopic,
+              this.installationId,
+              this.gatewayId,
+              this.deviceId,
+            );
+
+          // Check if there's already a sensor component for this feature that we can enhance
+          const existingFeatureComponents = featureComponents.filter(
+            ({ component }) => component.platform === "sensor",
+          );
+          
+          // If there's a sensor component for this feature and the command parameter matches a property,
+          // enhance the existing sensor instead of creating a new component
+          if (existingFeatureComponents.length > 0 && stateConfig) {
+            const properties = feature.properties as Record<string, unknown> | undefined;
+            const semanticMatches: Record<string, string[]> = {
+              // Temperature-related
+              targetTemperature: ["temperature", "temp", "value"],
+              targetTemp: ["temperature", "temp", "value"],
+              temperature: ["temperature", "temp", "value"],
+              temp: ["temperature", "temp", "value"],
+              // Mode-related (mode parameter -> value property)
+              mode: ["value", "mode"],
+              // Gas type (gasType parameter -> value property)
+              gasType: ["value", "type"],
+              // Active/boolean state
+              active: ["active", "value", "enabled"],
+              // Schedule-related (newSchedule parameter -> entries property)
+              newSchedule: ["entries", "schedule", "value"],
+              // Weekday-related (weekday parameter -> weekdays property)
+              weekday: ["weekdays", "weekday", "value"],
+            };
+            const candidates = [paramName, ...(semanticMatches[paramName] ?? [])];
+            
+            // Check if any property matches semantically
+            let hasMatchingProperty = false;
+            for (const candidate of candidates) {
+              const prop = properties?.[candidate] as
+                | { value?: unknown; unit?: string; type?: string }
+                | undefined;
+              if (prop && typeof prop === "object" && "value" in prop) {
+                hasMatchingProperty = true;
+                break;
+              }
+            }
+            
+            if (hasMatchingProperty) {
+              // Enhance the first sensor component for this feature with command capability
+              const existingComponent = existingFeatureComponents[0].component;
+              if (!existingComponent.command_topic) {
+                existingComponent.command_topic = this.generateCommandTopic(
+                  feature.feature,
+                  commandName,
+                );
+                if (paramDef.type === "number") {
+                  existingComponent.command_template =
+                    HomeAssistantDiscovery.buildSingleParamCommandTemplate(
+                      paramName,
+                      paramDef.type,
+                    );
+                  const constraints = paramDef.constraints as {
+                    min?: number;
+                    max?: number;
+                    stepping?: number;
+                  } | undefined;
+                  if (constraints?.min !== undefined) {
+                    existingComponent.min = constraints.min;
+                  }
+                  if (constraints?.max !== undefined) {
+                    existingComponent.max = constraints.max;
+                  }
+                  if (constraints?.stepping !== undefined) {
+                    existingComponent.step = constraints.stepping;
+                  }
+                }
+                // Mark as disabled if this is a service technician command
+                HomeAssistantDiscovery.addServiceCommandProperties(existingComponent, isServiceCommand);
+              }
+              // Skip creating a new component since we enhanced the existing one
+              continue;
+            }
+          }
+
+          // Skip creating components if we can't get a value (no matching property)
+          if (!stateConfig) {
+            continue;
+          }
+
+          if (
+            (paramDef.constraints as { enum?: string[] } | undefined)?.enum &&
+            paramDef.type === "string"
+          ) {
+            const enumValues =
+              (paramDef.constraints as { enum?: string[] }).enum ?? [];
+            const component: { platform: string; unique_id?: string; [key: string]: any } = {
+              platform: "select",
+              unique_id: `viessmann_${this.installationId}_${this.gatewayId}_${this.deviceId}_${componentKey}`,
+              name: HomeAssistantDiscovery.buildCommandComponentName(
+                featureName,
+                commandName,
+                paramName,
+              ),
+              options: enumValues,
+              command_topic: this.generateCommandTopic(
+                feature.feature,
+                commandName,
+              ),
+              command_template:
+                HomeAssistantDiscovery.buildSingleParamCommandTemplate(
+                  paramName,
+                  paramDef.type,
+                ),
+              ...stateConfig,
+            };
+            HomeAssistantDiscovery.addServiceCommandProperties(component, isServiceCommand);
+            commandComponents[componentKey] = component;
+            continue;
+          }
+
+          if (paramDef.type === "boolean") {
+            const component: { platform: string; unique_id?: string; [key: string]: any } = {
+              platform: "switch",
+              unique_id: `viessmann_${this.installationId}_${this.gatewayId}_${this.deviceId}_${componentKey}`,
+              name: HomeAssistantDiscovery.buildCommandComponentName(
+                featureName,
+                commandName,
+                paramName,
+              ),
+              command_topic: this.generateCommandTopic(
+                feature.feature,
+                commandName,
+              ),
+              payload_on: `{"${paramName}": true}`,
+              payload_off: `{"${paramName}": false}`,
+              ...stateConfig,
+            };
+            HomeAssistantDiscovery.addServiceCommandProperties(component, isServiceCommand);
+            commandComponents[componentKey] = component;
+            continue;
+          }
+
+          if (paramDef.type === "number") {
+            const constraints = paramDef.constraints as {
+              min?: number;
+              max?: number;
+              stepping?: number;
+            } | undefined;
+            const component: { platform: string; unique_id?: string; [key: string]: any } = {
+              platform: "number",
+              unique_id: `viessmann_${this.installationId}_${this.gatewayId}_${this.deviceId}_${componentKey}`,
+              name: HomeAssistantDiscovery.buildCommandComponentName(
+                featureName,
+                commandName,
+                paramName,
+              ),
+              command_topic: this.generateCommandTopic(
+                feature.feature,
+                commandName,
+              ),
+              command_template:
+                HomeAssistantDiscovery.buildSingleParamCommandTemplate(
+                  paramName,
+                  paramDef.type,
+                ),
+              mode: "box",
+              ...(constraints?.min !== undefined ? { min: constraints.min } : {}),
+              ...(constraints?.max !== undefined ? { max: constraints.max } : {}),
+              ...(constraints?.stepping !== undefined
+                ? { step: constraints.stepping }
+                : {}),
+              ...stateConfig,
+            };
+            HomeAssistantDiscovery.addServiceCommandProperties(component, isServiceCommand);
+            commandComponents[componentKey] = component;
+            continue;
+          }
+
+          const component: { platform: string; unique_id?: string; [key: string]: any } = {
+            platform: "text",
+            unique_id: `viessmann_${this.installationId}_${this.gatewayId}_${this.deviceId}_${componentKey}`,
+            name: HomeAssistantDiscovery.buildCommandComponentName(
+              featureName,
+              commandName,
+              paramName,
+            ),
+            command_topic: this.generateCommandTopic(
+              feature.feature,
+              commandName,
+            ),
+            command_template:
+              HomeAssistantDiscovery.buildSingleParamCommandTemplate(
+                paramName,
+                paramDef.type,
+              ),
+            ...stateConfig,
+          };
+          HomeAssistantDiscovery.addServiceCommandProperties(component, isServiceCommand);
+          commandComponents[componentKey] = component;
+          continue;
+        }
+
+        // For multi-param commands, try to create individual components for each parameter
+        // if they have matching properties
+        let createdComponents = false;
+        for (const [paramName, paramDef] of params) {
+          const stateConfig =
+            HomeAssistantDiscovery.getCommandStateConfig(
+              feature,
+              paramName,
+              feature.feature,
+              this.baseTopic,
+              this.installationId,
+              this.gatewayId,
+              this.deviceId,
+            );
+          
+          if (stateConfig) {
+            // Create individual component for this parameter
+            const paramComponentKey = `${baseKey}_${commandName}_${paramName}`.toLowerCase();
+            if (components[paramComponentKey] || commandComponents[paramComponentKey]) {
+              continue;
+            }
+            
+            if (
+              (paramDef.constraints as { enum?: string[] } | undefined)?.enum &&
+              paramDef.type === "string"
+            ) {
+              const enumValues =
+                (paramDef.constraints as { enum?: string[] }).enum ?? [];
+              const component: { platform: string; unique_id?: string; [key: string]: any } = {
+                platform: "select",
+                unique_id: `viessmann_${this.installationId}_${this.gatewayId}_${this.deviceId}_${paramComponentKey}`,
+                name: HomeAssistantDiscovery.buildCommandComponentName(
+                  featureName,
+                  commandName,
+                  paramName,
+                ),
+                options: enumValues,
+                command_topic: this.generateCommandTopic(
+                  feature.feature,
+                  commandName,
+                ),
+                command_template:
+                  HomeAssistantDiscovery.buildSingleParamCommandTemplate(
+                    paramName,
+                    paramDef.type,
+                  ),
+                ...stateConfig,
+              };
+              HomeAssistantDiscovery.addServiceCommandProperties(component, isServiceCommand);
+              commandComponents[paramComponentKey] = component;
+              createdComponents = true;
+            } else if (paramDef.type === "number") {
+              const constraints = paramDef.constraints as {
+                min?: number;
+                max?: number;
+                stepping?: number;
+              } | undefined;
+              const component: { platform: string; unique_id?: string; [key: string]: any } = {
+                platform: "number",
+                unique_id: `viessmann_${this.installationId}_${this.gatewayId}_${this.deviceId}_${paramComponentKey}`,
+                name: HomeAssistantDiscovery.buildCommandComponentName(
+                  featureName,
+                  commandName,
+                  paramName,
+                ),
+                command_topic: this.generateCommandTopic(
+                  feature.feature,
+                  commandName,
+                ),
+                command_template:
+                  HomeAssistantDiscovery.buildSingleParamCommandTemplate(
+                    paramName,
+                    paramDef.type,
+                  ),
+                mode: "box",
+                ...(constraints?.min !== undefined ? { min: constraints.min } : {}),
+                ...(constraints?.max !== undefined ? { max: constraints.max } : {}),
+                ...(constraints?.stepping !== undefined
+                  ? { step: constraints.stepping }
+                  : {}),
+                ...stateConfig,
+              };
+              HomeAssistantDiscovery.addServiceCommandProperties(component, isServiceCommand);
+              commandComponents[paramComponentKey] = component;
+              createdComponents = true;
+            } else if (paramDef.type === "boolean") {
+              const component: { platform: string; unique_id?: string; [key: string]: any } = {
+                platform: "switch",
+                unique_id: `viessmann_${this.installationId}_${this.gatewayId}_${this.deviceId}_${paramComponentKey}`,
+                name: HomeAssistantDiscovery.buildCommandComponentName(
+                  featureName,
+                  commandName,
+                  paramName,
+                ),
+                command_topic: this.generateCommandTopic(
+                  feature.feature,
+                  commandName,
+                ),
+                payload_on: `{"${paramName}": true}`,
+                payload_off: `{"${paramName}": false}`,
+                ...stateConfig,
+              };
+              HomeAssistantDiscovery.addServiceCommandProperties(component, isServiceCommand);
+              commandComponents[paramComponentKey] = component;
+              createdComponents = true;
+            }
+          }
+        }
+        
+        // If we created individual components, skip creating a text component
+        if (createdComponents) {
+          continue;
+        }
+        
+        // Skip creating components for commands without matching properties
+        // (no value to display)
+        continue;
+      }
+    }
+
+    return commandComponents;
+  }
+
   /**
    * Generate component configs for all enabled features automatically.
    * This generates sensors for features that don't have decorators.
    */
-  private async generateComponentsFromAllFeatures(
+  private generateComponentsFromAllFeatures(
     device: Device,
     decoratedFeaturePaths: Set<string>,
     features: ApiFeature[],
-  ): Promise<Record<string, { platform: string; unique_id?: string; [key: string]: any }>> {
+  ): Record<string, { platform: string; unique_id?: string; [key: string]: any }> {
     const components: Record<string, { platform: string; unique_id?: string; [key: string]: any }> = {};
 
     // Use provided features instead of fetching again
@@ -796,15 +1764,26 @@ export class HomeAssistantDiscovery {
           const countNumber = countKey.replace("count", "");
           const countIndex = countNumbers.indexOf(countNumber) + 1;
 
-          components[`${componentKey}_count_${countIndex}`] = {
+          const countComponent: { platform: string; unique_id?: string; [key: string]: any } = {
             platform: "sensor",
             unique_id: `viessmann_${this.installationId}_${this.gatewayId}_${this.deviceId}_${componentKey}_count_${countIndex}`,
             name: `${featureName} Count ${countIndex}`,
             state_topic: `${this.baseTopic}/installations/${this.installationId}/gateways/${this.gatewayId}/devices/${this.deviceId}/features/${featurePath}`,
             value_template: `{{ value_json.properties.${countKey}.value | int }}`,
+            // Count sensors are numeric, so state_class is safe
             state_class: "measurement",
             ...(unitOfMeasurement && { unit_of_measurement: unitOfMeasurement }),
           };
+          // Mark service technician features as disabled
+          // Don't set entity_category for sensors - just disable them
+          if (HomeAssistantDiscovery.isServiceTechnicianFeature(featurePath)) {
+            countComponent.enabled_by_default = false;
+            countComponent.en = false; // Abbreviation
+          }
+          // Count sensors are diagnostic (historical data)
+          countComponent.entity_category = "diagnostic";
+          countComponent.ent_cat = "diagnostic"; // Abbreviation
+          components[`${componentKey}_count_${countIndex}`] = countComponent;
         }
         continue; // Skip rest of loop - timeseries handled
       }
@@ -900,6 +1879,16 @@ export class HomeAssistantDiscovery {
           } else if (finalTimeUnit) {
             timeComponentConfig.unit_of_measurement = finalTimeUnit;
           }
+
+          // Mark service technician features as disabled
+          // Don't set entity_category for sensors - just disable them
+          if (HomeAssistantDiscovery.isServiceTechnicianFeature(featurePath)) {
+            timeComponentConfig.enabled_by_default = false;
+            timeComponentConfig.en = false; // Abbreviation
+          }
+          // Time-based sensors (week/month/year) are diagnostic (historical data)
+          timeComponentConfig.entity_category = "diagnostic";
+          timeComponentConfig.ent_cat = "diagnostic"; // Abbreviation
 
           components[timeComponentKey] = timeComponentConfig;
         }
@@ -1019,12 +2008,45 @@ export class HomeAssistantDiscovery {
       }
 
       // Add state_class for numeric sensors to help Home Assistant recognize them as numbers
+      // Only set if we're certain the value will be numeric (not an array or object)
       if (platform === "sensor" && !deviceClass) {
         // Check if this is a numeric sensor (has a numeric value property)
         const propKey = propertyPath.split(".")[0];
         const prop = properties[propKey] as Record<string, unknown> | undefined;
-        if (prop && typeof prop === "object" && "type" in prop && prop.type === "number") {
+        if (
+          prop &&
+          typeof prop === "object" &&
+          "type" in prop &&
+          prop.type === "number" &&
+          "value" in prop &&
+          typeof prop.value === "number" &&
+          !Array.isArray(prop.value) &&
+          !propertyPath.includes("[") // Don't set state_class for array access paths
+        ) {
+          // Only set state_class if the actual value is numeric (not an array or object)
           componentConfig.state_class = "measurement";
+        }
+      }
+
+      // Mark service technician features as disabled
+      if (HomeAssistantDiscovery.isServiceTechnicianFeature(featurePath)) {
+        componentConfig.enabled_by_default = false;
+        componentConfig.en = false; // Abbreviation
+        // Service technician sensors should use "diagnostic" category, not "config"
+        // Only command/control components can use "config" category
+        componentConfig.entity_category = "diagnostic";
+        componentConfig.ent_cat = "diagnostic"; // Abbreviation
+      } else {
+        // Set entity_category for diagnostic sensors (non-service technician)
+        const entityCategory = HomeAssistantDiscovery.determineEntityCategory(
+          featurePath,
+          platform,
+          deviceClass,
+          properties,
+        );
+        if (entityCategory) {
+          componentConfig.entity_category = entityCategory;
+          componentConfig.ent_cat = entityCategory; // Abbreviation
         }
       }
 

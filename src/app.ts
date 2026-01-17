@@ -6,6 +6,7 @@ import { isEqual, sleep } from "./utils.js";
 import { Publisher } from "./publish.js";
 import { DeviceFactory } from "./devices/factory.js";
 import { Device as DeviceBase } from "./devices/base.js";
+import { CommandSubscriber } from "./commands.js";
 import {
   HomeAssistantDiscovery,
 } from "./devices/homeassistant.js";
@@ -46,6 +47,19 @@ async function run(): Promise<void> {
 
   const publisher = new Publisher(config.mqttUrl, config.mqttRetain, config.mqttClientId.length > 0 ? config.mqttClientId : undefined, config.mqttUsername, config.mqttPassword);
 
+  if (config.mqttCommands) {
+    const commandSubscriber = new CommandSubscriber(
+      config.mqttUrl,
+      config.mqttTopic,
+      api,
+      logger,
+      config.mqttClientId.length > 0 ? `${config.mqttClientId}_commands` : undefined,
+      config.mqttUsername,
+      config.mqttPassword,
+    );
+    await commandSubscriber.start();
+  }
+
   // Publish Home Assistant device discovery configs if enabled
   const discoveryDevicesPublished = new Set<string>();
   if (config.mqttDiscovery) {
@@ -83,23 +97,35 @@ async function run(): Promise<void> {
             );
 
             const deviceDiscoveryConfig =
-              await discovery.generateDeviceDiscoveryConfig(deviceInstance, features);
+              discovery.generateDeviceDiscoveryConfig(deviceInstance, features);
 
-            // Only publish if device has components
+            const deviceId = `viessmann_${installation.id}_${gateway.serial}_${device.id}`;
+            const topic = `homeassistant/device/${deviceId}/config`;
+
+            // Publish or delete discovery message based on whether device has components
             if (
               Object.keys(deviceDiscoveryConfig.components).length > 0
             ) {
-              const deviceId = `viessmann_${installation.id}_${gateway.serial}_${device.id}`;
-              const topic = `homeassistant/device/${deviceId}/config`;
-
-              // Only publish each device discovery config once
+              // Always republish discovery messages to ensure Home Assistant picks up changes
+              // (e.g., enabled_by_default changes). Retain so they persist after HA restarts.
+              await publisher.publish(topic, deviceDiscoveryConfig, { retain: true });
               if (!discoveryDevicesPublished.has(deviceId)) {
-                await publisher.publish(topic, deviceDiscoveryConfig);
                 discoveryDevicesPublished.add(deviceId);
                 logger.log(
                   `Published device discovery config: ${topic} with ${Object.keys(deviceDiscoveryConfig.components).length} components`,
                 );
+              } else {
+                logger.log(
+                  `Republished device discovery config: ${topic} with ${Object.keys(deviceDiscoveryConfig.components).length} components`,
+                );
               }
+            } else {
+              // Device has no components - delete any existing discovery message
+              // This prevents Home Assistant from trying to clean up a device with no components
+              await publisher.delete(topic);
+              logger.log(
+                `Deleted device discovery config: ${topic} (device has no components)`,
+              );
             }
           } catch (e) {
             logger.warn(

@@ -31,7 +31,7 @@ describe("HomeAssistantDiscovery", () => {
       id: device0Data.deviceId as string,
       modelId: "Vitodens-200",
       gatewaySerial: device0Data.gatewayId as string,
-      boilerSerial: "",
+      boilerSerial: device0Data.boilerSerial as string || "TEST_DEVICE_SERIAL_123", // Use anonymized serial
       boilerSerialEditor: "",
       bmuSerial: null,
       bmuSerialEditor: null,
@@ -65,7 +65,11 @@ describe("HomeAssistantDiscovery", () => {
       expect(config.device).toBeDefined();
       expect(config.device.identifiers).toBeDefined();
       expect(Array.isArray(config.device.identifiers)).toBe(true);
-      expect(config.device.identifiers[0]).toContain("viessmann_");
+      // ViCare format: {gateway_serial}_{device_serial} or {gateway_serial}_{device_id}
+      // Primary identifier should start with gateway serial
+      expect(config.device.identifiers[0]).toMatch(new RegExp(`^${device0Data.gatewayId}_`));
+      // Composite identifier should also be included
+      expect(config.device.identifiers.some((id: string) => id.includes("viessmann_"))).toBe(true);
       expect(config.device.manufacturer).toBe("Viessmann");
       expect(config.device.model).toBeDefined();
       expect(config.device.name).toBeDefined();
@@ -176,8 +180,15 @@ describe("HomeAssistantDiscovery", () => {
     it("should create unique device identifier", async () => {
       const config = await discovery.generateDeviceDiscoveryConfig(device, features);
 
-      const expectedIdentifier = `viessmann_${device0Data.installationId}_${device0Data.gatewayId}_${device0Data.deviceId}`;
-      expect(config.device.identifiers[0]).toBe(expectedIdentifier);
+      // ViCare format: {gateway_serial}_{device_serial} (with dashes replaced by underscores)
+      // Or: {gateway_serial}_{device_id} if device_serial is not available
+      // Primary identifier should match ViCare format
+      const primaryIdentifier = config.device.identifiers[0];
+      expect(primaryIdentifier).toMatch(new RegExp(`^${device0Data.gatewayId}_(.+)$`));
+      
+      // Composite identifier should also be included for backwards compatibility
+      const expectedCompositeIdentifier = `viessmann_${device0Data.installationId}_${device0Data.gatewayId}_${device0Data.deviceId}`;
+      expect(config.device.identifiers).toContain(expectedCompositeIdentifier);
     });
   });
 });

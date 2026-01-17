@@ -126,6 +126,26 @@ export class ViessmannApi {
     return fetch(url, token.sign({ method: "get", url }));
   }
 
+  private async request(
+    method: "post",
+    endpoint: string,
+    body: unknown,
+  ): Promise<Response> {
+    const urlBuilder = new URL(endpoint, this.baseUrl);
+    const token = await this.ensureToken();
+    const url = urlBuilder.href;
+    this.logger.log(`Requesting ${method.toUpperCase()} ${url}`);
+    const signed = token.sign({ method, url }) as { headers?: Record<string, string> };
+    return fetch(url, {
+      method,
+      headers: {
+        "content-type": "application/json",
+        ...(signed.headers ?? {}),
+      },
+      body: JSON.stringify(body ?? {}),
+    });
+  }
+
   public async getInstallations(): Promise<InstallationsResponse> {
     const allInstallations: Installation[] = [];
     let cursor: string | undefined;
@@ -184,6 +204,35 @@ export class ViessmannApi {
     } catch (error) {
       this.logger.error(`Failed to parse JSON response: ${text.substring(0, 200)}`);
       throw new Error(`Invalid JSON response: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  public async executeCommand({
+    installationId,
+    gatewayId,
+    deviceId,
+    featurePath,
+    commandName,
+    params,
+  }: {
+    installationId: number;
+    gatewayId: string;
+    deviceId: string;
+    featurePath: string;
+    commandName: string;
+    params: Record<string, unknown>;
+  }): Promise<void> {
+    const endpoint = `iot/v2/features/installations/${encodeURI(
+      installationId.toString(),
+    )}/gateways/${encodeURI(gatewayId)}/devices/${encodeURI(
+      deviceId,
+    )}/features/${encodeURI(featurePath)}/commands/${encodeURI(commandName)}`;
+    const response = await this.request("post", endpoint, params);
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(
+        `Failed to execute command ${commandName}: ${response.status} ${response.statusText} - ${errorText}`,
+      );
     }
   }
 }
