@@ -9,8 +9,11 @@
     "build": "tsc",
     "start": "node ./bin/app.js",
     "dev": "tsx ./src/app.ts",
+    "fetch-diagnostics": "tsx ./scripts/fetch-diagnostics.ts",
     "lint:fix": "eslint --fix 'src/**/*.ts{,x}'",
-    "lint": "tsc --noEmit && eslint 'src/**/*.ts{,x}'"
+    "lint": "tsc --noEmit && eslint 'src/**/*.ts{,x}'",
+    "test": "vitest",
+    "test:ui": "vitest --ui"
   },
   "dependencies": {
     "async-mqtt": "^2.6.3",
@@ -21,20 +24,19 @@
     "pkce-challenge": "^5.0.1"
   },
   "devDependencies": {
+    "@stylistic/eslint-plugin": "^4.2.0",
     "@types/lodash": "^4.17.23",
     "@types/node": "^25.0.9",
-    "@typescript-eslint/eslint-plugin": "^7.18.0",
-    "@typescript-eslint/parser": "^7.18.0",
-    "eslint": "^8.57.0",
-    "eslint-config-airbnb-base": "^15.0.0",
-    "eslint-config-airbnb-typescript": "^18.0.0",
+    "@vitest/ui": "^4.0.17",
+    "eslint": "^9.18.0",
+    "eslint-config-prettier": "^9.1.0",
     "eslint-plugin-import": "^2.32.0",
-    "eslint-plugin-n": "^17.23.2",
-    "eslint-plugin-promise": "^7.2.1",
     "eslint-plugin-unused-imports": "^4.3.0",
     "prettier": "^3.8.0",
     "ts-node": "^10.9.2",
     "tsx": "^4.21.0",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.18.0",
+    "vitest": "^4.0.17"
   }
 }

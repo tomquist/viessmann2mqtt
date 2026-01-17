@@ -102,7 +102,7 @@ export class ViessmannApi {
           token = await this.token;
         }
         return token;
-      } catch (e) {
+      } catch {
         // Previous login failed.
       }
     }
