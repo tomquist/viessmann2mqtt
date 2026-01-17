@@ -5,7 +5,7 @@ import { dirname, join } from "node:path";
 // Load data-points.json for feature name/description lookup
 const currentFile = fileURLToPath(import.meta.url);
 const currentDir = dirname(currentFile);
-const dataPointsPath = join(currentDir, "../../data/data-points.json");
+const dataPointsPath = join(currentDir, "../data-points.json");
 
 interface Feature {
   name: string;

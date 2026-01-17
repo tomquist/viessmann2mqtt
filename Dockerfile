@@ -10,7 +10,8 @@ RUN npm run build \
     && npm prune --production \
     && mkdir out \
     && mv bin out/ \
-    && mv node_modules out/
+    && mv node_modules out/ \
+    && cp src/data-points.json out/bin/
 
 FROM node:20-alpine
 RUN mkdir /app
