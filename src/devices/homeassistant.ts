@@ -148,7 +148,11 @@ export class HomeAssistantDiscovery {
       if (stateTopic) {
         const match = stateTopic.match(/\/features\/(.+)$/);
         if (match) {
-          decoratedFeaturePaths.add(match[1]);
+          const featurePath = match[1];
+          // Don't track circuit container features or list features
+          if (!HomeAssistantDiscovery.isCircuitContainerFeature(featurePath) && !Device.isListFeature(featurePath)) {
+            decoratedFeaturePaths.add(featurePath);
+          }
         }
       }
     }
@@ -171,13 +175,19 @@ export class HomeAssistantDiscovery {
     );
     
     // Track features handled by device-specific components
+    // Exclude circuit container features (heating.circuits.{id}) - these are only used internally
+    // Exclude list features (heating.burners, heating.circuits) - these are containers
     for (const component of Object.values(deviceComponents)) {
        
       const stateTopic = component.state_topic as string;
       if (stateTopic) {
         const match = stateTopic.match(/\/features\/(.+)$/);
         if (match) {
-          decoratedFeaturePaths.add(match[1]);
+          const featurePath = match[1];
+          // Don't track circuit container features or list features
+          if (!HomeAssistantDiscovery.isCircuitContainerFeature(featurePath) && !Device.isListFeature(featurePath)) {
+            decoratedFeaturePaths.add(featurePath);
+          }
         }
       }
     }
@@ -201,10 +211,28 @@ export class HomeAssistantDiscovery {
     // Enhance components with command topics where applicable
     this.enhanceComponentsWithCommands(components, features);
 
+    // Final safety check: Remove any components for circuit container features or list features that might have slipped through
+    const filteredComponents: Record<string, { platform: string; unique_id?: string; [key: string]: any }> = {};
+    for (const [componentKey, component] of Object.entries(components)) {
+      const featurePath = HomeAssistantDiscovery.extractFeaturePath(
+        component.state_topic as string | undefined,
+      );
+      // Skip circuit container features
+      if (featurePath && HomeAssistantDiscovery.isCircuitContainerFeature(featurePath)) {
+        continue;
+      }
+      // Skip list features (heating.burners, heating.circuits) - these are containers
+      // and shouldn't create entities, but data should still be published to MQTT
+      if (featurePath && Device.isListFeature(featurePath)) {
+        continue;
+      }
+      filteredComponents[componentKey] = component;
+    }
+
     return {
       device: deviceInfo,
       origin,
-      components,
+      components: filteredComponents,
     };
   }
 
@@ -217,7 +245,7 @@ export class HomeAssistantDiscovery {
     features: ApiFeature[],
   ): Record<string, { platform: string; unique_id?: string; [key: string]: any }> {
     const components: Record<string, { platform: string; unique_id?: string; [key: string]: any }> = {};
-    const discoverableMethods = getDiscoverableMethods(device);
+    const discoverableMethods = getDiscoverableMethods(device as unknown as Record<string, unknown>);
 
     // Use provided features instead of fetching again
     const featureNames = features.filter((f: ApiFeature) => f.isEnabled).map((f: ApiFeature) => f.feature);
@@ -234,7 +262,13 @@ export class HomeAssistantDiscovery {
       const componentKey = metadata.componentKey || methodName.replace(/^get/, "").replace(/([A-Z])/g, "_$1").toLowerCase().replace(/^_/, "");
 
       // Get feature name (always returns a string)
-      const featureName = getFeatureName(metadata.featurePath);
+      let featureName = getFeatureName(metadata.featurePath);
+      
+      // If this is a circuit feature, try to get the circuit name and prepend it
+      const circuitName = this.getCircuitNameForFeature(metadata.featurePath, features);
+      if (circuitName) {
+        featureName = `${circuitName} ${featureName}`;
+      }
 
       // Build component config
       // Extract property path from value template if provided, otherwise default to "value.value"
@@ -434,6 +468,7 @@ export class HomeAssistantDiscovery {
     component: { platform: string; unique_id?: string; [key: string]: any },
     feature: ApiFeature,
     components: Record<string, { platform: string; unique_id?: string; [key: string]: any }>,
+    features: ApiFeature[],
   ): void {
     const featurePath = HomeAssistantDiscovery.extractFeaturePath(
       component.state_topic as string | undefined,
@@ -498,6 +533,7 @@ export class HomeAssistantDiscovery {
         this.gatewayId,
         this.deviceId,
         this.baseTopic,
+        features as Array<{ feature: string; properties?: Record<string, unknown> }>,
       );
 
       Object.assign(components, timeBasedComponents);
@@ -531,7 +567,7 @@ export class HomeAssistantDiscovery {
       const feature = featurePath ? featureMap.get(featurePath) : undefined;
 
       if (feature) {
-        this.enhanceComponent(componentKey, component, feature, components);
+        this.enhanceComponent(componentKey, component, feature, components, features);
       }
     });
   }
@@ -1059,6 +1095,18 @@ export class HomeAssistantDiscovery {
       return true;
     }
 
+    // Calibration features (hysteresis, limits, etc.) are service-only
+    // These are fine-tuning parameters that should be adjusted by professionals
+    if (featurePath.includes(".hysteresis")) {
+      return true;
+    }
+    if (featurePath.includes(".minimumLimit") || featurePath.includes(".maximumLimit") || featurePath.includes(".defaultLimit")) {
+      return true;
+    }
+    if (featurePath.includes(".normalRange")) {
+      return true;
+    }
+
     return false;
   }
 
@@ -1195,6 +1243,17 @@ export class HomeAssistantDiscovery {
     });
 
     for (const feature of features) {
+      // Skip circuit container features (heating.circuits.{id}) - these are only used internally
+      // to get circuit names for other entities and shouldn't create command components
+      if (HomeAssistantDiscovery.isCircuitContainerFeature(feature.feature)) {
+        continue;
+      }
+      // Skip list features (heating.burners, heating.circuits) - these are containers
+      // and shouldn't create entities, but data should still be published to MQTT
+      if (Device.isListFeature(feature.feature)) {
+        continue;
+      }
+      
       const executableCommands = HomeAssistantDiscovery.getExecutableCommands(
         feature,
       );
@@ -1206,7 +1265,14 @@ export class HomeAssistantDiscovery {
       const hasClimate = featureComponents.some(
         ({ component }) => component.platform === "climate",
       );
-      const featureName = getFeatureName(feature.feature);
+      let featureName = getFeatureName(feature.feature);
+      
+      // If this is a circuit feature, try to get the circuit name and prepend it
+      const circuitName = this.getCircuitNameForFeature(feature.feature, features);
+      if (circuitName) {
+        featureName = `${circuitName} ${featureName}`;
+      }
+      
       const baseKey = HomeAssistantDiscovery.generateComponentKey(feature.feature);
 
       for (const [commandName, command] of executableCommands) {
@@ -1687,6 +1753,53 @@ export class HomeAssistantDiscovery {
   }
 
   /**
+   * Check if a feature path is a circuit container feature (heating.circuits.{id}).
+   * These features are only used internally to get circuit names and shouldn't create entities.
+   */
+  private static isCircuitContainerFeature(featurePath: string): boolean {
+    // Match exactly "heating.circuits.{number}" with no additional path segments
+    return /^heating\.circuits\.\d+$/.test(featurePath);
+  }
+
+  /**
+   * Extract circuit ID from a circuit feature path and get the circuit name.
+   * Returns the circuit name if available, or null if not a circuit feature or name not found.
+   */
+  private getCircuitNameForFeature(
+    featurePath: string,
+    features: ApiFeature[],
+  ): string | null {
+    // Check if this is a circuit feature (pattern: heating.circuits.\d+)
+    const circuitMatch = featurePath.match(/^heating\.circuits\.(\d+)/);
+    if (!circuitMatch) {
+      return null;
+    }
+
+    const circuitId = circuitMatch[1];
+    const circuitFeaturePath = `heating.circuits.${circuitId}`;
+    
+    // Find the circuit feature to get its name
+    const circuitFeature = features.find((f) => f.feature === circuitFeaturePath);
+    if (!circuitFeature || !circuitFeature.properties) {
+      return null;
+    }
+
+    // Get the name property from the circuit feature
+    const nameProperty = circuitFeature.properties.name as
+      | { value?: string }
+      | undefined;
+    
+    if (nameProperty && typeof nameProperty === "object" && "value" in nameProperty) {
+      const circuitName = nameProperty.value;
+      return typeof circuitName === "string" && circuitName.trim() !== ""
+        ? circuitName
+        : null;
+    }
+
+    return null;
+  }
+
+  /**
    * Generate component configs for all enabled features automatically.
    * This generates sensors for features that don't have decorators.
    */
@@ -1699,13 +1812,29 @@ export class HomeAssistantDiscovery {
 
     // Use provided features instead of fetching again
     // Filter enabled features that aren't already handled by decorators
-     
+    // Exclude circuit container features (heating.circuits.{id}) - these are only used internally
+    // to get circuit names for other entities and shouldn't create their own entities
+    // Exclude list features (heating.burners, heating.circuits) - these are containers for lists
+    // and shouldn't create entities, but data should still be published to MQTT
     const enabledFeatures = features.filter(
-      (f: ApiFeature) =>
-        f.isEnabled &&
-        f.properties &&
-        Object.keys(f.properties).length > 0 &&
-        !decoratedFeaturePaths.has(f.feature),
+      (f: ApiFeature) => {
+        // Exclude circuit container features (heating.circuits.{id}) - these are only used internally
+        // to get circuit names for other entities and shouldn't create their own entities
+        if (HomeAssistantDiscovery.isCircuitContainerFeature(f.feature)) {
+          return false;
+        }
+        // Exclude list features (heating.burners, heating.circuits) - these are containers
+        // and shouldn't create entities, but data should still be published to MQTT
+        if (Device.isListFeature(f.feature)) {
+          return false;
+        }
+        return (
+          f.isEnabled &&
+          f.properties &&
+          Object.keys(f.properties).length > 0 &&
+          !decoratedFeaturePaths.has(f.feature)
+        );
+      },
     );
 
     for (const feature of enabledFeatures) {
@@ -1723,7 +1852,13 @@ export class HomeAssistantDiscovery {
       // Generate component key and name
       const componentKey =
         HomeAssistantDiscovery.generateComponentKey(featurePath);
-      const featureName = getFeatureName(featurePath);
+      let featureName = getFeatureName(featurePath);
+      
+      // If this is a circuit feature, try to get the circuit name and prepend it
+      const circuitName = this.getCircuitNameForFeature(featurePath, features);
+      if (circuitName) {
+        featureName = `${circuitName} ${featureName}`;
+      }
 
        
       const propsKeys = Object.keys(properties);
@@ -1786,6 +1921,67 @@ export class HomeAssistantDiscovery {
           components[`${componentKey}_count_${countIndex}`] = countComponent;
         }
         continue; // Skip rest of loop - timeseries handled
+      }
+
+      // Handle device.configuration - create individual entities for each property
+      if (featurePath === "device.configuration") {
+        const baseFeatureName = getFeatureName(featurePath);
+        
+        for (const [propKey, propValue] of Object.entries(properties)) {
+          if (!propValue || typeof propValue !== "object" || !("type" in propValue) || !("value" in propValue)) {
+            continue;
+          }
+          
+          const prop = propValue as { type: string; value: unknown };
+          const propType = prop.type;
+          
+          // Determine platform based on property type
+          let propPlatform: "sensor" | "binary_sensor";
+          let valueTemplate: string;
+          let deviceClass: string | undefined;
+          
+          if (propType === "boolean") {
+            propPlatform = "binary_sensor";
+            deviceClass = propKey.toLowerCase().includes("active") ? "heat" : undefined;
+            valueTemplate = safeValueTemplate(`${propKey}.value`, true);
+          } else if (propType === "array") {
+            propPlatform = "sensor";
+            // For arrays, show as comma-separated list
+            valueTemplate = `{% if value_json is defined %}{% if value_json.properties is defined %}{% if value_json.properties.${propKey} is defined %}{% if value_json.properties.${propKey}.value is defined %}{% if value_json.properties.${propKey}.value is iterable %}{{ value_json.properties.${propKey}.value|join(', ') }}{% else %}{{ value_json.properties.${propKey}.value }}{% endif %}{% endif %}{% endif %}{% endif %}{% endif %}`;
+          } else {
+            // string or other types
+            propPlatform = "sensor";
+            valueTemplate = safeValueTemplate(`${propKey}.value`, false);
+          }
+          
+          // Generate component key and name
+          const propComponentKey = `${componentKey}_${propKey}`;
+          const propName = propKey
+            .replace(/([A-Z])/g, " $1")
+            .replace(/^./, (str) => str.toUpperCase())
+            .trim();
+          
+          const componentConfig: { platform: string; unique_id?: string; [key: string]: any } = {
+            platform: propPlatform,
+            unique_id: `viessmann_${this.installationId}_${this.gatewayId}_${this.deviceId}_${propComponentKey}`,
+            name: `${baseFeatureName} ${propName}`,
+            state_topic: `${this.baseTopic}/installations/${this.installationId}/gateways/${this.gatewayId}/devices/${this.deviceId}/features/${featurePath}`,
+            value_template: valueTemplate,
+          };
+          
+          if (deviceClass) {
+            componentConfig.device_class = deviceClass;
+          }
+          
+          // Mark as diagnostic/configuration entity
+          componentConfig.entity_category = "diagnostic";
+          componentConfig.ent_cat = "diagnostic"; // Abbreviation
+          
+          components[propComponentKey] = componentConfig;
+        }
+        
+        // Skip rest of loop - device.configuration handled
+        continue;
       }
 
       // Check for time-based properties (day/week/month/year or currentDay/etc.)

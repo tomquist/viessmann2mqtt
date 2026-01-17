@@ -35,7 +35,7 @@ describe("Service Technician Commands Disabled", () => {
   );
 
   describe("Service technician commands should be disabled by default", () => {
-    it("should disable configuration feature commands", async () => {
+    it("should disable configuration feature commands", () => {
       const features: Feature[] = [
         {
           feature: "heating.configuration.houseOrientation",
@@ -79,7 +79,7 @@ describe("Service Technician Commands Disabled", () => {
         features,
       ) as HeatingDevice;
 
-      const config = await discovery.generateDeviceDiscoveryConfig(device, features);
+      const config = discovery.generateDeviceDiscoveryConfig(device, features);
 
       // Find components for setOrientation command
       const orientationComponents = Object.values(config.components).filter((c) =>
@@ -95,7 +95,7 @@ describe("Service Technician Commands Disabled", () => {
       }
     });
 
-    it("should disable calibration commands (setAltitude)", async () => {
+    it("should disable calibration commands (setAltitude)", () => {
       const features: Feature[] = [
         {
           feature: "device.configuration.houseLocation",
@@ -133,7 +133,7 @@ describe("Service Technician Commands Disabled", () => {
         features,
       ) as HeatingDevice;
 
-      const config = await discovery.generateDeviceDiscoveryConfig(device, features);
+      const config = discovery.generateDeviceDiscoveryConfig(device, features);
 
       // Find all components - configuration commands should be disabled if created
       const allComponents = Object.values(config.components);
@@ -163,7 +163,7 @@ describe("Service Technician Commands Disabled", () => {
       }
     });
 
-    it("should disable reset commands", async () => {
+    it("should disable reset commands", () => {
       const features: Feature[] = [
         {
           feature: "device.setDefaultValues",
@@ -193,7 +193,7 @@ describe("Service Technician Commands Disabled", () => {
         features,
       ) as HeatingDevice;
 
-      const config = await discovery.generateDeviceDiscoveryConfig(device, features);
+      const config = discovery.generateDeviceDiscoveryConfig(device, features);
 
       const resetComponents = Object.values(config.components).filter((c) =>
         c.unique_id?.includes("reset"),
@@ -208,7 +208,7 @@ describe("Service Technician Commands Disabled", () => {
       }
     });
 
-    it("should disable screed drying commands", async () => {
+    it("should disable screed drying commands", () => {
       const features: Feature[] = [
         {
           feature: "heating.circuits.1.operating.programs.screedDrying",
@@ -255,7 +255,7 @@ describe("Service Technician Commands Disabled", () => {
         features,
       ) as HeatingDevice;
 
-      const config = await discovery.generateDeviceDiscoveryConfig(device, features);
+      const config = discovery.generateDeviceDiscoveryConfig(device, features);
 
       const screedComponents = Object.values(config.components).filter((c) =>
         c.unique_id?.includes("screeddrying"),
@@ -270,7 +270,7 @@ describe("Service Technician Commands Disabled", () => {
       }
     });
 
-    it("should disable calibration commands (setHysteresis)", async () => {
+    it("should disable calibration commands (setHysteresis)", () => {
       const features: Feature[] = [
         {
           feature: "heating.dhw.temperature.hysteresis",
@@ -308,7 +308,7 @@ describe("Service Technician Commands Disabled", () => {
         features,
       ) as HeatingDevice;
 
-      const config = await discovery.generateDeviceDiscoveryConfig(device, features);
+      const config = discovery.generateDeviceDiscoveryConfig(device, features);
 
       const hysteresisComponents = Object.values(config.components).filter((c) =>
         c.unique_id?.includes("sethysteresis"),
@@ -323,7 +323,7 @@ describe("Service Technician Commands Disabled", () => {
       }
     });
 
-    it("should NOT disable user-facing commands (setTemperature)", async () => {
+    it("should NOT disable user-facing commands (setTemperature)", () => {
       const features: Feature[] = [
         {
           feature: "heating.circuits.1.operating.programs.comfort",
@@ -361,7 +361,7 @@ describe("Service Technician Commands Disabled", () => {
         features,
       ) as HeatingDevice;
 
-      const config = await discovery.generateDeviceDiscoveryConfig(device, features);
+      const config = discovery.generateDeviceDiscoveryConfig(device, features);
 
       // Find components that might be related to temperature commands
       // They might enhance existing sensors or create new ones
@@ -386,7 +386,7 @@ describe("Service Technician Commands Disabled", () => {
       }
     });
 
-    it("should disable sensor components for service technician features (screed drying)", async () => {
+    it("should disable sensor components for service technician features (screed drying)", () => {
       const features: Feature[] = [
         {
           feature: "heating.circuits.2.operating.programs.screedDrying",
@@ -412,7 +412,7 @@ describe("Service Technician Commands Disabled", () => {
         features,
       ) as HeatingDevice;
 
-      const config = await discovery.generateDeviceDiscoveryConfig(device, features);
+      const config = discovery.generateDeviceDiscoveryConfig(device, features);
 
       // Find sensor component for screed drying
       const screedComponents = Object.values(config.components).filter((c) =>
@@ -433,7 +433,7 @@ describe("Service Technician Commands Disabled", () => {
       }
     });
 
-    it("should NOT disable resetSchedule (user-facing)", async () => {
+    it("should NOT disable resetSchedule (user-facing)", () => {
       const features: Feature[] = [
         {
           feature: "heating.circuits.1.heating.schedule",
@@ -470,7 +470,7 @@ describe("Service Technician Commands Disabled", () => {
         features,
       ) as HeatingDevice;
 
-      const config = await discovery.generateDeviceDiscoveryConfig(device, features);
+      const config = discovery.generateDeviceDiscoveryConfig(device, features);
 
       const resetScheduleComponents = Object.values(config.components).filter((c) =>
         c.unique_id?.includes("resetschedule"),

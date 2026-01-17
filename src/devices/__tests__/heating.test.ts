@@ -18,18 +18,18 @@ describe("HeatingDevice", () => {
   beforeEach(() => {
     // Get device 0 data (gas boiler)
     device0Data = diagnosticsData.data.find((d: any) => d.deviceId === "0")!;
-    features = device0Data.features.data as Feature[];
+    features = device0Data.features.data;
 
     accessor = {
-      installationId: device0Data.installationId as number,
-      gatewayId: device0Data.gatewayId as string,
-      deviceId: device0Data.deviceId as string,
+      installationId: device0Data.installationId,
+      gatewayId: device0Data.gatewayId,
+      deviceId: device0Data.deviceId,
     };
 
     deviceModel = {
-      id: device0Data.deviceId as string,
+      id: device0Data.deviceId,
       modelId: "Vitodens-200",
-      gatewaySerial: device0Data.gatewayId as string,
+      gatewaySerial: device0Data.gatewayId,
       boilerSerial: "",
       boilerSerialEditor: "",
       bmuSerial: null,
@@ -103,9 +103,9 @@ describe("HeatingDevice", () => {
     it("should generate Home Assistant components", () => {
       const components = device.generateHomeAssistantComponents(
         "homeassistant",
-        device0Data.installationId as number,
-        device0Data.gatewayId as string,
-        device0Data.deviceId as string,
+        device0Data.installationId,
+        device0Data.gatewayId,
+        device0Data.deviceId,
         new Set(),
         features,
       );
@@ -166,9 +166,9 @@ describe("HeatingDevice", () => {
     it("should generate circuit climate components when modes and temperature are available", () => {
       const components = device.generateHomeAssistantComponents(
         "homeassistant",
-        device0Data.installationId as number,
-        device0Data.gatewayId as string,
-        device0Data.deviceId as string,
+        device0Data.installationId,
+        device0Data.gatewayId,
+        device0Data.deviceId,
         new Set(),
         features,
       );

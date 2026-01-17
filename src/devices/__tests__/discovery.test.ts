@@ -4,6 +4,7 @@ import {
   CircuitClimate,
   CircuitSensor,
   DependentProperty,
+  type DiscoverableMethod,
   HeatingCurve,
   PropertyRetrieval,
   Sensor,
@@ -42,8 +43,13 @@ describe("Discovery Decorators", () => {
       }
 
       // Get the original method from prototype to access metadata
-      const method = TestDevice.prototype.getOutsideTemperature as any;
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
+      // The metadata is stored on the original function, not bound versions
+      // Access via descriptor to avoid unbound method lint error
+      const descriptor = Object.getOwnPropertyDescriptor(TestDevice.prototype, "getOutsideTemperature");
+      const method = descriptor?.value as unknown as DiscoverableMethod | undefined;
+      if (!method) {
+        throw new Error("Method not found");
+      }
       const metadata = getDiscoveryMetadata(method);
 
       expect(metadata).toBeDefined();
@@ -66,8 +72,13 @@ describe("Discovery Decorators", () => {
       }
 
       // Get the original method from prototype to access metadata
-      const method = TestDevice.prototype.getOutsideTemperature as any;
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
+      // The metadata is stored on the original function, not bound versions
+      // Access via descriptor to avoid unbound method lint error
+      const descriptor = Object.getOwnPropertyDescriptor(TestDevice.prototype, "getOutsideTemperature");
+      const method = descriptor?.value as unknown as DiscoverableMethod | undefined;
+      if (!method) {
+        throw new Error("Method not found");
+      }
       const metadata = getDiscoveryMetadata(method);
 
       expect(metadata?.valueTemplate).toBe("{{ value_json.properties.day.value[0] }}");
@@ -232,18 +243,18 @@ describe("getDiscoverableMethods", () => {
 
   beforeEach(() => {
     device0Data = diagnosticsData.data.find((d: any) => d.deviceId === "0")!;
-    features = device0Data.features.data as Feature[];
+    features = device0Data.features.data;
 
     accessor = {
-      installationId: device0Data.installationId as number,
-      gatewayId: device0Data.gatewayId as string,
-      deviceId: device0Data.deviceId as string,
+      installationId: device0Data.installationId,
+      gatewayId: device0Data.gatewayId,
+      deviceId: device0Data.deviceId,
     };
 
     deviceModel = {
-      id: device0Data.deviceId as string,
+      id: device0Data.deviceId,
       modelId: "Vitodens-200",
-      gatewaySerial: device0Data.gatewayId as string,
+      gatewaySerial: device0Data.gatewayId,
       boilerSerial: "",
       boilerSerialEditor: "",
       bmuSerial: null,
@@ -264,7 +275,7 @@ describe("getDiscoverableMethods", () => {
   });
 
   it("should discover methods decorated with @Sensor", () => {
-    const discoverableMethods = getDiscoverableMethods(device);
+    const discoverableMethods = getDiscoverableMethods(device as unknown as Record<string, unknown>);
 
     // Should find methods decorated with @Sensor
     const sensorMethods = discoverableMethods.filter(
@@ -284,7 +295,7 @@ describe("getDiscoverableMethods", () => {
   });
 
   it("should bind methods to the instance", () => {
-    const discoverableMethods = getDiscoverableMethods(device);
+    const discoverableMethods = getDiscoverableMethods(device as unknown as Record<string, unknown>);
 
     for (const { method } of discoverableMethods) {
       // Bound methods should be callable
@@ -302,18 +313,18 @@ describe("getComplexComponentProperties", () => {
 
   beforeEach(() => {
     device0Data = diagnosticsData.data.find((d: any) => d.deviceId === "0")!;
-    features = device0Data.features.data as Feature[];
+    features = device0Data.features.data;
 
     accessor = {
-      installationId: device0Data.installationId as number,
-      gatewayId: device0Data.gatewayId as string,
-      deviceId: device0Data.deviceId as string,
+      installationId: device0Data.installationId,
+      gatewayId: device0Data.gatewayId,
+      deviceId: device0Data.deviceId,
     };
 
     deviceModel = {
-      id: device0Data.deviceId as string,
+      id: device0Data.deviceId,
       modelId: "Vitodens-200",
-      gatewaySerial: device0Data.gatewayId as string,
+      gatewaySerial: device0Data.gatewayId,
       boilerSerial: "",
       boilerSerialEditor: "",
       bmuSerial: null,

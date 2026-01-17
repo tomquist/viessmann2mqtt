@@ -213,6 +213,7 @@ export abstract class Device {
         gatewayId,
         deviceId,
         baseTopic,
+        features,
       );
 
       Object.assign(components, timeComponents);

@@ -5,7 +5,6 @@ import { Feature, Property } from "./models.js";
 import { isEqual, sleep } from "./utils.js";
 import { Publisher } from "./publish.js";
 import { DeviceFactory } from "./devices/factory.js";
-import { Device as DeviceBase } from "./devices/base.js";
 import { CommandSubscriber } from "./commands.js";
 import {
   HomeAssistantDiscovery,
@@ -162,12 +161,13 @@ async function run(): Promise<void> {
     const enabledFeatures = features.data
       .filter(
         (feature: Feature) => {
+          // Publish all enabled features with properties to MQTT
+          // List features (heating.burners, heating.circuits) are published to MQTT
+          // but excluded from Home Assistant discovery
           if (!feature.isEnabled || Object.values(feature.properties).length === 0) {
             return false;
           }
-          // Static method check - safe to call
-          const isList = (DeviceBase.isListFeature as (path: string) => boolean)(feature.feature);
-          return !isList;
+          return true;
         },
       )
       .map((feature: Feature) => {

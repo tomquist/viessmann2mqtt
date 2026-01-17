@@ -196,7 +196,7 @@ export class CommandSubscriber {
       let rawValue: unknown = payload;
       if (payload && typeof payload === "object" && !Array.isArray(payload)) {
         if (paramName in payload) {
-          rawValue = (payload as Record<string, unknown>)[paramName];
+          rawValue = payload[paramName];
         }
       }
       const coerced = this.coerceValue(paramDef, rawValue);
@@ -224,7 +224,7 @@ export class CommandSubscriber {
         continue;
       }
 
-      const rawValue = (payload as Record<string, unknown>)[paramName];
+      const rawValue = payload[paramName];
       const coerced = this.coerceValue(paramDef, rawValue);
       if (coerced.error) {
         return { error: `${paramName}: ${coerced.error}` };

@@ -302,8 +302,8 @@ const burnerSensorStore = new WeakMap<object, Map<string, BurnerSensorMetadata>>
 /**
  * Helper to get or create a metadata map for a class prototype.
  */
-function getMetadataMap<T>(store: WeakMap<object, Map<string, T>>, target: any): Map<string, T> {
-  const prototype = target.prototype || target;
+function getMetadataMap<T>(store: WeakMap<object, Map<string, T>>, target: object): Map<string, T> {
+  const prototype = (target as { prototype?: object }).prototype || target;
   let map = store.get(prototype);
   if (!map) {
     map = new Map();
@@ -329,7 +329,7 @@ function getMetadataMap<T>(store: WeakMap<object, Map<string, T>>, target: any):
  */
 export function CircuitSensor(metadata: CircuitSensorMetadata) {
   return function (
-    target: any,
+    target: object,
     propertyKey: string,
   ) {
     // Store metadata on the class prototype using property key
@@ -353,7 +353,7 @@ export function CircuitSensor(metadata: CircuitSensorMetadata) {
  */
 export function CircuitClimate(metadata: CircuitClimateMetadata) {
   return function (
-    target: any,
+    target: object,
     propertyKey: string,
   ) {
     const map = getMetadataMap(circuitClimateStore, target);
@@ -375,7 +375,7 @@ export function CircuitClimate(metadata: CircuitClimateMetadata) {
  */
 export function HeatingCurve(metadata: HeatingCurveMetadata) {
   return function (
-    target: any,
+    target: object,
     propertyKey: string,
   ) {
     const map = getMetadataMap(heatingCurveStore, target);
@@ -398,7 +398,7 @@ export function HeatingCurve(metadata: HeatingCurveMetadata) {
  */
 export function TimeBasedSensor(metadata: TimeBasedSensorMetadata) {
   return function (
-    target: any,
+    target: object,
     propertyKey: string,
   ) {
     const map = getMetadataMap(timeBasedSensorStore, target);
@@ -424,7 +424,7 @@ export function TimeBasedSensor(metadata: TimeBasedSensorMetadata) {
  */
 export function BurnerSensor(metadata: BurnerSensorMetadata) {
   return function (
-    target: any,
+    target: object,
     propertyKey: string,
   ) {
     const map = getMetadataMap(burnerSensorStore, target);
@@ -502,10 +502,10 @@ export function getComplexComponentProperties(
     burnerSensors: [] as Array<{ propertyName: string; metadata: BurnerSensorMetadata }>,
   };
 
-  const prototype = Object.getPrototypeOf(instance);
+  const prototype = Object.getPrototypeOf(instance) as object;
   const propertyNames = new Set<string>();
   
-  let current = prototype;
+  let current: object | null = prototype;
   while (current && current !== Object.prototype) {
     Object.getOwnPropertyNames(current).forEach((name) => {
       if (name !== "constructor") {
@@ -548,8 +548,7 @@ export function getComplexComponentProperties(
 /**
  * Type for a discoverable method.
  */
- 
-type DiscoverableMethod = () => Promise<any>;
+export type DiscoverableMethod = () => Promise<unknown>;
 
 /**
  * Metadata for property-based data retrieval.
@@ -653,7 +652,7 @@ const dependentPropertyStore = new WeakMap<object, Map<string, DependentProperty
  */
 export function PropertyRetrieval(metadata: PropertyRetrievalMetadata) {
   return function (
-    target: any,
+    target: object,
     propertyKey: string,
     descriptor?: PropertyDescriptor,
   ) {
@@ -666,37 +665,36 @@ export function PropertyRetrieval(metadata: PropertyRetrievalMetadata) {
       // Handle instance-specific placeholders like circuitId (N placeholder)
       let featurePath = metadata.featurePath;
       if (featurePath.includes("N")) {
-        const circuitId = (this).circuitId;
+        const circuitId = (this as { circuitId?: string }).circuitId;
         if (circuitId !== undefined) {
-          featurePath = featurePath.replace(/N/g, circuitId);
+          featurePath = featurePath.replace(/N/g, String(circuitId));
         }
       }
       
       // Access features - could be on device.features or this.features
-      const instance = this;
-      let features = instance.features as Map<string, any> | undefined;
+      let features = (this as { features?: Map<string, unknown> }).features;
       
       // If features not found on this, try accessing via device property (for HeatingCircuit)
-      if (!features && instance.device) {
-        features = (instance.device).features as Map<string, any> | undefined;
+      if (!features && (this as { device?: { features?: Map<string, unknown> } }).device) {
+        features = (this as { device: { features?: Map<string, unknown> } }).device.features;
       }
       
       if (!features) {
         return metadata.returnType === "boolean" ? false : null;
       }
       
-      const feature = features.get(featurePath);
+      const feature = features.get(featurePath) as { isEnabled?: boolean } | undefined;
       if (!feature || !feature.isEnabled) {
         return metadata.returnType === "boolean" ? false : null;
       }
       
       // Handle custom accessor if provided
       if (metadata.customAccessor) {
-        const value = metadata.customAccessor(feature);
+        const value = metadata.customAccessor(feature as Parameters<typeof metadata.customAccessor>[0]);
         if (metadata.returnType === "boolean") {
-          return value === true || value === "on";
+          return (value === true || value === "on");
         }
-        return value;
+        return value as unknown;
       }
 
       // Determine source (properties or commands)
@@ -705,7 +703,7 @@ export function PropertyRetrieval(metadata: PropertyRetrievalMetadata) {
       // Access from commands if needed
       if (source === "commands") {
         const parts = metadata.propertyPath.split(".");
-        let current: any = feature.commands;
+        let current: unknown = (feature as { commands?: Record<string, unknown> }).commands;
         
         for (const part of parts) {
           if (current === null || current === undefined) {
@@ -714,26 +712,29 @@ export function PropertyRetrieval(metadata: PropertyRetrievalMetadata) {
           if (typeof current !== "object") {
             return metadata.returnType === "array" ? [] : null;
           }
-          if (current[part] === undefined) {
+          const currentObj = current as Record<string, unknown>;
+          if (currentObj[part] === undefined) {
             return metadata.returnType === "array" ? [] : null;
           }
-          current = current[part];
+          current = currentObj[part];
         }
         
         // Handle array return type
         if (metadata.returnType === "array") {
-          return Array.isArray(current) ? current : [];
+          return (Array.isArray(current) ? current : []) as unknown[];
         }
         
         return current;
       }
       
       // Default: access from properties using getPropertyValue
-      let getPropertyValueFn: <T>(feature: any, path: string) => T | null;
-      if (instance.getPropertyValue) {
-        getPropertyValueFn = instance.getPropertyValue.bind(instance);
-      } else if (instance.device && (instance.device).getPropertyValue) {
-        getPropertyValueFn = (instance.device).getPropertyValue.bind(instance.device);
+      type GetPropertyValueFn = <T>(feature: unknown, path: string) => T | null;
+      let getPropertyValueFn: GetPropertyValueFn | undefined;
+      const thisObj = this as { getPropertyValue?: GetPropertyValueFn; device?: { getPropertyValue?: GetPropertyValueFn } };
+      if (thisObj.getPropertyValue) {
+        getPropertyValueFn = thisObj.getPropertyValue.bind(thisObj);
+      } else if (thisObj.device?.getPropertyValue) {
+        getPropertyValueFn = thisObj.device.getPropertyValue.bind(thisObj.device);
       } else {
         return null;
       }
@@ -749,7 +750,7 @@ export function PropertyRetrieval(metadata: PropertyRetrievalMetadata) {
         }
       }
       
-      let value = getPropertyValueFn<any>(feature, propertyPath);
+      let value = getPropertyValueFn<unknown>(feature, propertyPath);
       
       // Handle array access
       if (arrayIndex !== undefined && Array.isArray(value)) {
@@ -757,7 +758,7 @@ export function PropertyRetrieval(metadata: PropertyRetrievalMetadata) {
       }
       
       if (metadata.returnType === "boolean") {
-        return value === true || value === "on";
+        return (value === true || value === "on");
       }
       return value;
     };
@@ -765,7 +766,7 @@ export function PropertyRetrieval(metadata: PropertyRetrievalMetadata) {
     // If this is a method (has descriptor), replace the implementation
     if (descriptor && descriptor.value) {
       descriptor.value = getterImpl;
-      return descriptor as any;
+      return;
     }
     
     // If this is a property (no descriptor), implement a synchronous getter
@@ -799,7 +800,7 @@ export function PropertyRetrieval(metadata: PropertyRetrievalMetadata) {
  */
 export function DependentProperty(metadata: DependentPropertyMetadata) {
   return function (
-    target: any,
+    target: object,
     propertyKey: string,
     descriptor?: PropertyDescriptor,
   ) {
@@ -828,8 +829,9 @@ export function DependentProperty(metadata: DependentPropertyMetadata) {
       // Check condition if provided
       if (metadata.condition) {
         try {
-          // Evaluate condition function
-          const conditionFn = new Function("value", `return ${metadata.condition}`) as (value: any) => boolean;
+          // Evaluate condition function - using Function constructor is necessary for dynamic conditions
+          // eslint-disable-next-line @typescript-eslint/no-implied-eval
+          const conditionFn = new Function("value", `return ${metadata.condition}`) as (value: unknown) => boolean;
           if (!conditionFn(dependentValue)) {
             return null;
           }
@@ -845,49 +847,51 @@ export function DependentProperty(metadata: DependentPropertyMetadata) {
       
       // Build feature path by replacing placeholders
       const placeholder = metadata.placeholder || "value";
-      let featurePath = metadata.featurePathTemplate.replace(`{${placeholder}}`, dependentValue);
+      const dependentValueStr = String(dependentValue);
+      let featurePath = metadata.featurePathTemplate.replace(`{${placeholder}}`, dependentValueStr);
       
       // Handle instance-specific placeholders like circuitId (N placeholder)
       // Check if this instance has a circuitId property (for HeatingCircuit)
       if (featurePath.includes("N")) {
-        const circuitId = (this).circuitId;
+        const circuitId = (this as { circuitId?: string }).circuitId;
         if (circuitId !== undefined) {
           featurePath = featurePath.replace(/N/g, circuitId);
         }
       }
       
       // Access features - could be on device.features or this.features
-      const instance = this;
-      let features = instance.features as Map<string, any> | undefined;
+      let features = (this as { features?: Map<string, unknown> }).features;
       
       // If features not found on this, try accessing via device property (for HeatingCircuit)
-      if (!features && instance.device) {
-        features = (instance.device).features as Map<string, any> | undefined;
+      if (!features && (this as { device?: { features?: Map<string, unknown> } }).device) {
+        features = (this as { device: { features?: Map<string, unknown> } }).device.features;
       }
       
       if (!features) {
         return metadata.returnType === "boolean" ? false : null;
       }
       
-      const feature = features.get(featurePath);
+      const feature = features.get(featurePath) as { isEnabled?: boolean } | undefined;
       if (!feature || !feature.isEnabled) {
         return metadata.returnType === "boolean" ? false : null;
       }
       
       // Get getPropertyValue method - could be on device or this
-      let getPropertyValueFn: <T>(feature: any, path: string) => T | null;
-      if (instance.getPropertyValue) {
-        getPropertyValueFn = instance.getPropertyValue.bind(instance);
-      } else if (instance.device && (instance.device).getPropertyValue) {
-        getPropertyValueFn = (instance.device).getPropertyValue.bind(instance.device);
+      type GetPropertyValueFn = <T>(feature: unknown, path: string) => T | null;
+      let getPropertyValueFn: GetPropertyValueFn | undefined;
+      const thisObj = this as { getPropertyValue?: GetPropertyValueFn; device?: { getPropertyValue?: GetPropertyValueFn } };
+      if (thisObj.getPropertyValue) {
+        getPropertyValueFn = thisObj.getPropertyValue.bind(thisObj);
+      } else if (thisObj.device?.getPropertyValue) {
+        getPropertyValueFn = thisObj.device.getPropertyValue.bind(thisObj.device);
       } else {
         return null;
       }
       
-      const value = getPropertyValueFn<any>(feature, metadata.propertyPath);
+      const value = getPropertyValueFn<unknown>(feature, metadata.propertyPath);
       
       if (metadata.returnType === "boolean") {
-        return value === true || value === "on";
+        return (value === true || value === "on");
       }
       return value;
     };
@@ -895,7 +899,7 @@ export function DependentProperty(metadata: DependentPropertyMetadata) {
     // If this is a method (has descriptor), replace the implementation
     if (descriptor && descriptor.value) {
       descriptor.value = getterImpl;
-      return descriptor as any;
+      return;
     }
     
     // If this is a property (no descriptor), implement a synchronous getter
@@ -906,8 +910,6 @@ export function DependentProperty(metadata: DependentPropertyMetadata) {
         configurable: true,
       });
     }
-    
-    return undefined;
   };
 }
 
@@ -915,8 +917,7 @@ export function DependentProperty(metadata: DependentPropertyMetadata) {
  * Get all methods with discovery metadata from a class instance.
  */
 export function getDiscoverableMethods(
-   
-  instance: any,
+  instance: Record<string, unknown>,
 ): Array<{ methodName: string; metadata: SensorDiscoveryMetadata; method: DiscoverableMethod }> {
   const methods: Array<{ methodName: string; metadata: SensorDiscoveryMetadata; method: DiscoverableMethod }> = [];
    
@@ -925,9 +926,8 @@ export function getDiscoverableMethods(
   // Get all property names from the prototype chain
   const propertyNames = new Set<string>();
    
-  let current = prototype;
+  let current: object | null = prototype;
   while (current && current !== Object.prototype) {
-     
     Object.getOwnPropertyNames(current).forEach((name) => {
       if (name !== "constructor" && name.startsWith("get")) {
         propertyNames.add(name);
@@ -939,18 +939,15 @@ export function getDiscoverableMethods(
 
   // Check each property for discovery metadata
   for (const methodName of propertyNames) {
-     
     const method = instance[methodName];
     if (typeof method === "function") {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
-      const metadata = getDiscoveryMetadata(method);
+      const metadata = getDiscoveryMetadata(method as DiscoverableMethod);
       if (metadata) {
         // Bind the method to the instance to preserve 'this' context
         methods.push({
           methodName,
           metadata,
-           
-          method: method.bind(instance),
+          method: (method as DiscoverableMethod).bind(instance),
         });
       }
     }

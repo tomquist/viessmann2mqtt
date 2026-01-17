@@ -19,18 +19,18 @@ describe("HomeAssistantDiscovery", () => {
 
   beforeEach(() => {
     device0Data = diagnosticsData.data.find((d: any) => d.deviceId === "0")!;
-    features = device0Data.features.data as Feature[];
+    features = device0Data.features.data;
 
     accessor = {
-      installationId: device0Data.installationId as number,
-      gatewayId: device0Data.gatewayId as string,
-      deviceId: device0Data.deviceId as string,
+      installationId: device0Data.installationId,
+      gatewayId: device0Data.gatewayId,
+      deviceId: device0Data.deviceId,
     };
 
     deviceModel = {
-      id: device0Data.deviceId as string,
+      id: device0Data.deviceId,
       modelId: "Vitodens-200",
-      gatewaySerial: device0Data.gatewayId as string,
+      gatewaySerial: device0Data.gatewayId,
       boilerSerial: device0Data.boilerSerial as string || "TEST_DEVICE_SERIAL_123", // Use anonymized serial
       boilerSerialEditor: "",
       bmuSerial: null,
@@ -51,15 +51,15 @@ describe("HomeAssistantDiscovery", () => {
 
     discovery = new HomeAssistantDiscovery(
       "homeassistant",
-      device0Data.installationId as number,
-      device0Data.gatewayId as string,
-      device0Data.deviceId as string,
+      device0Data.installationId,
+      device0Data.gatewayId,
+      device0Data.deviceId,
     );
   });
 
   describe("generateDeviceDiscoveryConfig", () => {
-    it("should generate device discovery config", async () => {
-      const config = await discovery.generateDeviceDiscoveryConfig(device, features);
+    it("should generate device discovery config", () => {
+      const config = discovery.generateDeviceDiscoveryConfig(device, features);
 
       expect(config).toBeDefined();
       expect(config.device).toBeDefined();
@@ -75,23 +75,23 @@ describe("HomeAssistantDiscovery", () => {
       expect(config.device.name).toBeDefined();
     });
 
-    it("should include origin information", async () => {
-      const config = await discovery.generateDeviceDiscoveryConfig(device, features);
+    it("should include origin information", () => {
+      const config = discovery.generateDeviceDiscoveryConfig(device, features);
 
       expect(config.origin).toBeDefined();
       expect(config.origin.name).toBe("viessmann2mqtt");
       expect(config.origin.sw_version).toBeDefined();
     });
 
-    it("should include components", async () => {
-      const config = await discovery.generateDeviceDiscoveryConfig(device, features);
+    it("should include components", () => {
+      const config = discovery.generateDeviceDiscoveryConfig(device, features);
 
       expect(config.components).toBeDefined();
       expect(typeof config.components).toBe("object");
     });
 
-    it("should generate components with correct structure", async () => {
-      const config = await discovery.generateDeviceDiscoveryConfig(device, features);
+    it("should generate components with correct structure", () => {
+      const config = discovery.generateDeviceDiscoveryConfig(device, features);
 
       const componentKeys = Object.keys(config.components);
       
@@ -110,8 +110,8 @@ describe("HomeAssistantDiscovery", () => {
       }
     });
 
-    it("should generate unique IDs for all components", async () => {
-      const config = await discovery.generateDeviceDiscoveryConfig(device, features);
+    it("should generate unique IDs for all components", () => {
+      const config = discovery.generateDeviceDiscoveryConfig(device, features);
 
       const uniqueIds = new Set<string>();
       for (const component of Object.values(config.components)) {
@@ -122,8 +122,8 @@ describe("HomeAssistantDiscovery", () => {
       }
     });
 
-    it("should include device identifiers in component unique IDs", async () => {
-      const config = await discovery.generateDeviceDiscoveryConfig(device, features);
+    it("should include device identifiers in component unique IDs", () => {
+      const config = discovery.generateDeviceDiscoveryConfig(device, features);
       
       for (const component of Object.values(config.components)) {
         if (component.unique_id) {
@@ -135,8 +135,8 @@ describe("HomeAssistantDiscovery", () => {
   });
 
   describe("Component Generation from Decorators", () => {
-    it("should generate components from @Sensor decorators", async () => {
-      const config = await discovery.generateDeviceDiscoveryConfig(device, features);
+    it("should generate components from @Sensor decorators", () => {
+      const config = discovery.generateDeviceDiscoveryConfig(device, features);
 
       // Should have sensor components if device has sensors with @Sensor decorator
       const sensorComponents = Object.values(config.components).filter(
@@ -147,11 +147,11 @@ describe("HomeAssistantDiscovery", () => {
       expect(Array.isArray(sensorComponents)).toBe(true);
     });
 
-    it("should generate circuit components when circuits are available", async () => {
+    it("should generate circuit components when circuits are available", () => {
       const circuits = device.getAvailableCircuits();
       
       if (circuits.length > 0) {
-        const config = await discovery.generateDeviceDiscoveryConfig(device, features);
+        const config = discovery.generateDeviceDiscoveryConfig(device, features);
 
         // Should have circuit-related components
         const circuitComponents = Object.keys(config.components).filter((key) =>
@@ -165,20 +165,20 @@ describe("HomeAssistantDiscovery", () => {
   });
 
   describe("Device Information", () => {
-    it("should include correct device model", async () => {
-      const config = await discovery.generateDeviceDiscoveryConfig(device, features);
+    it("should include correct device model", () => {
+      const config = discovery.generateDeviceDiscoveryConfig(device, features);
 
       expect(config.device.model).toBe(device.getModelId());
     });
 
-    it("should include device ID in name", async () => {
-      const config = await discovery.generateDeviceDiscoveryConfig(device, features);
+    it("should include device ID in name", () => {
+      const config = discovery.generateDeviceDiscoveryConfig(device, features);
 
       expect(config.device.name).toContain(device0Data.deviceId);
     });
 
-    it("should create unique device identifier", async () => {
-      const config = await discovery.generateDeviceDiscoveryConfig(device, features);
+    it("should create unique device identifier", () => {
+      const config = discovery.generateDeviceDiscoveryConfig(device, features);
 
       // ViCare format: {gateway_serial}_{device_serial} (with dashes replaced by underscores)
       // Or: {gateway_serial}_{device_id} if device_serial is not available

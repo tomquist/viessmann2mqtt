@@ -17,18 +17,18 @@ describe("Component Generation", () => {
 
   beforeEach(() => {
     device0Data = diagnosticsData.data.find((d: any) => d.deviceId === "0")!;
-    features = device0Data.features.data as Feature[];
+    features = device0Data.features.data;
 
     accessor = {
-      installationId: device0Data.installationId as number,
-      gatewayId: device0Data.gatewayId as string,
-      deviceId: device0Data.deviceId as string,
+      installationId: device0Data.installationId,
+      gatewayId: device0Data.gatewayId,
+      deviceId: device0Data.deviceId,
     };
 
     deviceModel = {
-      id: device0Data.deviceId as string,
+      id: device0Data.deviceId,
       modelId: "Vitodens-200",
-      gatewaySerial: device0Data.gatewayId as string,
+      gatewaySerial: device0Data.gatewayId,
       boilerSerial: "",
       boilerSerialEditor: "",
       bmuSerial: null,
@@ -55,9 +55,9 @@ describe("Component Generation", () => {
 
       const components = device.generateHomeAssistantComponents(
         "homeassistant",
-        device0Data.installationId as number,
-        device0Data.gatewayId as string,
-        device0Data.deviceId as string,
+        device0Data.installationId,
+        device0Data.gatewayId,
+        device0Data.deviceId,
         new Set(),
         features,
       );
@@ -109,9 +109,9 @@ describe("Component Generation", () => {
       if (hasValidCircuit) {
         const components = device.generateHomeAssistantComponents(
           "homeassistant",
-          device0Data.installationId as number,
-          device0Data.gatewayId as string,
-          device0Data.deviceId as string,
+          device0Data.installationId,
+          device0Data.gatewayId,
+          device0Data.deviceId,
           new Set(),
           features,
         );
@@ -146,9 +146,9 @@ describe("Component Generation", () => {
     it("should generate components with correct structure", () => {
       const components = device.generateHomeAssistantComponents(
         "homeassistant",
-        device0Data.installationId as number,
-        device0Data.gatewayId as string,
-        device0Data.deviceId as string,
+        device0Data.installationId,
+        device0Data.gatewayId,
+        device0Data.deviceId,
         new Set(),
         features,
       );

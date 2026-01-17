@@ -190,9 +190,9 @@ export function safeValueTemplate(propertyPath: string, isBinarySensor = false):
   if (propertyPath === "value.value") {
     // Use a more robust template that handles nested properties correctly
     const template = "{% if value_json is defined %}{% if value_json.properties is defined %}{% if value_json.properties.value is defined %}{% if value_json.properties.value.value is defined %}{{ value_json.properties.value.value }}{% endif %}{% endif %}{% endif %}{% endif %}";
-    // For binary sensors, convert on/off to ON/OFF
+    // For binary sensors, convert on/off strings and true/false booleans to ON/OFF
     if (isBinarySensor) {
-      return "{% if value_json is defined %}{% if value_json.properties is defined %}{% if value_json.properties.value is defined %}{% if value_json.properties.value.value is defined %}{% if value_json.properties.value.value|lower == \"on\" %}ON{% elif value_json.properties.value.value|lower == \"off\" %}OFF{% else %}{{ value_json.properties.value.value }}{% endif %}{% endif %}{% endif %}{% endif %}{% endif %}";
+      return "{% if value_json is defined %}{% if value_json.properties is defined %}{% if value_json.properties.value is defined %}{% if value_json.properties.value.value is defined %}{% if value_json.properties.value.value == true %}ON{% elif value_json.properties.value.value == false %}OFF{% elif value_json.properties.value.value|lower == \"on\" %}ON{% elif value_json.properties.value.value|lower == \"off\" %}OFF{% else %}{{ value_json.properties.value.value }}{% endif %}{% endif %}{% endif %}{% endif %}{% endif %}";
     }
     return template;
   }
@@ -211,9 +211,9 @@ export function safeValueTemplate(propertyPath: string, isBinarySensor = false):
   if (parts.length === 2) {
     const [prop, subProp] = parts;
     const baseTemplate = `{% if value_json is defined %}{% if value_json.properties is defined %}{% if value_json.properties.${prop} is defined %}{% if value_json.properties.${prop}.${subProp} is defined %}{{ value_json.properties.${prop}.${subProp} }}{% endif %}{% endif %}{% endif %}{% endif %}`;
-    // For binary sensors with status/active, convert on/off to ON/OFF
-    if (isBinarySensor && (prop === "status" || prop === "active")) {
-      return `{% if value_json is defined %}{% if value_json.properties is defined %}{% if value_json.properties.${prop} is defined %}{% if value_json.properties.${prop}.${subProp} is defined %}{% if value_json.properties.${prop}.${subProp}|lower == "on" %}ON{% elif value_json.properties.${prop}.${subProp}|lower == "off" %}OFF{% elif value_json.properties.${prop}.${subProp} == true %}ON{% elif value_json.properties.${prop}.${subProp} == false %}OFF{% else %}{{ value_json.properties.${prop}.${subProp} }}{% endif %}{% endif %}{% endif %}{% endif %}{% endif %}`;
+    // For binary sensors, convert on/off strings and true/false booleans to ON/OFF
+    if (isBinarySensor) {
+      return `{% if value_json is defined %}{% if value_json.properties is defined %}{% if value_json.properties.${prop} is defined %}{% if value_json.properties.${prop}.${subProp} is defined %}{% if value_json.properties.${prop}.${subProp} == true %}ON{% elif value_json.properties.${prop}.${subProp} == false %}OFF{% elif value_json.properties.${prop}.${subProp}|lower == "on" %}ON{% elif value_json.properties.${prop}.${subProp}|lower == "off" %}OFF{% else %}{{ value_json.properties.${prop}.${subProp} }}{% endif %}{% endif %}{% endif %}{% endif %}{% endif %}`;
     }
     return baseTemplate;
   }
@@ -221,7 +221,7 @@ export function safeValueTemplate(propertyPath: string, isBinarySensor = false):
   // Fallback to default
   const fallbackTemplate = "{% if value_json is defined %}{% if value_json.properties is defined %}{% if value_json.properties.value is defined %}{% if value_json.properties.value.value is defined %}{{ value_json.properties.value.value }}{% endif %}{% endif %}{% endif %}{% endif %}";
   if (isBinarySensor) {
-    return "{% if value_json is defined %}{% if value_json.properties is defined %}{% if value_json.properties.value is defined %}{% if value_json.properties.value.value is defined %}{% if value_json.properties.value.value|lower == \"on\" %}ON{% elif value_json.properties.value.value|lower == \"off\" %}OFF{% else %}{{ value_json.properties.value.value }}{% endif %}{% endif %}{% endif %}{% endif %}{% endif %}";
+    return "{% if value_json is defined %}{% if value_json.properties is defined %}{% if value_json.properties.value is defined %}{% if value_json.properties.value.value is defined %}{% if value_json.properties.value.value == true %}ON{% elif value_json.properties.value.value == false %}OFF{% elif value_json.properties.value.value|lower == \"on\" %}ON{% elif value_json.properties.value.value|lower == \"off\" %}OFF{% else %}{{ value_json.properties.value.value }}{% endif %}{% endif %}{% endif %}{% endif %}{% endif %}";
   }
   return fallbackTemplate;
 }
@@ -356,6 +356,48 @@ export function getFeatureName(featurePath: string): string {
 }
 
 /**
+ * Extract circuit ID from a circuit feature path and get the circuit name.
+ * Returns the circuit name if available, or null if not a circuit feature or name not found.
+ */
+function getCircuitNameForFeaturePath(
+  featurePath: string,
+  features?: Array<{ feature: string; properties?: Record<string, unknown> }>,
+): string | null {
+  if (!features) {
+    return null;
+  }
+
+  // Check if this is a circuit feature (pattern: heating.circuits.\d+)
+  const circuitMatch = featurePath.match(/^heating\.circuits\.(\d+)/);
+  if (!circuitMatch) {
+    return null;
+  }
+
+  const circuitId = circuitMatch[1];
+  const circuitFeaturePath = `heating.circuits.${circuitId}`;
+  
+  // Find the circuit feature to get its name
+  const circuitFeature = features.find((f) => f.feature === circuitFeaturePath);
+  if (!circuitFeature || !circuitFeature.properties) {
+    return null;
+  }
+
+  // Get the name property from the circuit feature
+  const nameProperty = circuitFeature.properties.name as
+    | { value?: string }
+    | undefined;
+  
+  if (nameProperty && typeof nameProperty === "object" && "value" in nameProperty) {
+    const circuitName = nameProperty.value;
+    return typeof circuitName === "string" && circuitName.trim() !== ""
+      ? circuitName
+      : null;
+  }
+
+  return null;
+}
+
+/**
  * Generate time-based sensor components for a feature that has multiple time periods.
  * @param featurePath - The feature path (e.g., "heating.gas.consumption.heating")
  * @param feature - The feature object with properties
@@ -365,6 +407,7 @@ export function getFeatureName(featurePath: string): string {
  * @param gatewayId - Gateway ID
  * @param deviceId - Device ID
  * @param baseTopic - MQTT base topic
+ * @param features - Optional array of all features (used to extract circuit names)
  * @returns Record of additional time-based components
  */
 export function generateTimeBasedComponents(
@@ -376,6 +419,7 @@ export function generateTimeBasedComponents(
   gatewayId: string,
   deviceId: string,
   baseTopic: string,
+  features?: Array<{ feature: string; properties?: Record<string, unknown> }>,
 ): Record<string, { platform: string; unique_id?: string; [key: string]: any }> {
   const components: Record<string, { platform: string; unique_id?: string; [key: string]: any }> = {};
   
@@ -392,7 +436,13 @@ export function generateTimeBasedComponents(
 
   const unit = baseComponent.unit_of_measurement;
   const deviceClass = baseComponent.device_class;
-  const featureName = getFeatureName(featurePath);
+  let featureName = getFeatureName(featurePath);
+  
+  // If this is a circuit feature, try to get the circuit name and prepend it
+  const circuitName = getCircuitNameForFeaturePath(featurePath, features);
+  if (circuitName) {
+    featureName = `${circuitName} ${featureName}`;
+  }
 
   for (const timeKey of timeBasedKeys) {
     const timePropertyPath = `${timeKey}.value[0]`;

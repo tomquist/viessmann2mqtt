@@ -81,6 +81,11 @@ export interface ArrayProperty {
   value: any[];
 }
 
+export interface ScheduleProperty {
+  type: "Schedule";
+  value: Record<string, Array<{ mode: string; start: string; end: string; position: number }>>;
+}
+
 export enum Unit {
   TerawattHour = "TerawattHour",
   GigawattHour = "GigawattHour",
@@ -97,6 +102,7 @@ export enum Unit {
   Decibar = "Decibar",
   Bar = "Bar",
   Kilometer = "Kilometer",
+  Meter = "Meter",
   Kilogram = "Kilogram",
   CubicMeter = "CubicMeter",
   Liter = "Liter",
@@ -106,6 +112,8 @@ export enum Unit {
   GallonPerMinute = "GallonPerMinute",
   Celsius = "Celsius",
   Fahrenheit = "Fahrenheit",
+  Kelvin = "Kelvin",
+  Degree = "Degree",
   Percentage = "Percentage",
   KilometersPerHour = "KilometersPerHour",
   MilesPerHour = "MilesPerHour",
@@ -127,7 +135,8 @@ export type Property =
   | StringProperty
   | BooleanProperty
   | ArrayProperty
-  | NumberProperty;
+  | NumberProperty
+  | ScheduleProperty;
 
 export type CommandParameter = {
   type: string;
