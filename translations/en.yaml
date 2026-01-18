@@ -1,0 +1,46 @@
+configuration:
+  username:
+    name: Viessmann Username
+    description: Your Viessmann account email address
+  password:
+    name: Viessmann Password
+    description: Your Viessmann account password
+  client_id:
+    name: Client ID
+    description: OAuth2 Client ID for Viessmann API access
+  client_secret:
+    name: Client Secret
+    description: OAuth2 Client Secret for Viessmann API access (optional)
+  redirect_uri:
+    name: Redirect URI
+    description: OAuth2 Redirect URI (default is 'vicare://oauth-callback/everest')
+  scopes:
+    name: OAuth2 Scopes
+    description: Space-separated list of OAuth2 scopes (optional, uses default scopes if not specified)
+  poll_interval:
+    name: Poll Interval
+    description: Interval in seconds between API polls (default is automatic)
+  mqtt_topic:
+    name: MQTT Topic
+    description: Base MQTT topic for publishing data (default is 'viessmann2mqtt')
+  mqtt_client_id:
+    name: MQTT Client ID
+    description: Custom MQTT client identifier (default is auto-generated)
+  mqtt_retain:
+    name: MQTT Retain
+    description: Retain MQTT messages on the broker (default is true)
+  mqtt_commands:
+    name: MQTT Commands
+    description: Enable MQTT commands to control devices (default is true)
+  mqtt_uri:
+    name: MQTT Broker URI
+    description: Custom MQTT broker URI (default uses Home Assistant's MQTT add-on)
+  mqtt_username:
+    name: MQTT Username
+    description: MQTT broker username (default uses Home Assistant's MQTT add-on)
+  mqtt_password:
+    name: MQTT Password
+    description: MQTT broker password (default uses Home Assistant's MQTT add-on)
+  verbose:
+    name: Verbose Logging
+    description: Enable detailed debug logging (default is false)

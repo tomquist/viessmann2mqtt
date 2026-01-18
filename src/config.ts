@@ -1,7 +1,4 @@
-import { config as configDotenv } from "dotenv";
-
 function stringEnvVar(envVarName: keyof typeof process["env"]): string;
-
 function stringEnvVar(
   envVarName: keyof typeof process["env"],
   defaultValue: string
@@ -64,7 +61,6 @@ function arrayEnvVar(
   }
 }
 export function getConfig() {
-  configDotenv();
   return {
     username: stringEnvVar("V2M_USERNAME"),
     password: stringEnvVar("V2M_PASSWORD"),
@@ -74,7 +70,7 @@ export function getConfig() {
     authorizationUri: stringEnvVar("V2M_AUTHORIZATION_URI", null),
     redirectUri: stringEnvVar(
       "V2M_REDIRECT_URI",
-      "https://localhost/redirect",
+      "vicare://oauth-callback/everest",
     ),
     scopes: arrayEnvVar("V2M_SCOPES", ["IoT User", "offline_access"]),
     baseUrl: stringEnvVar("V2M_BASE_URL", null),

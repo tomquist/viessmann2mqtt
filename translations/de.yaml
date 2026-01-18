@@ -1,0 +1,46 @@
+configuration:
+  username:
+    name: Viessmann Benutzername
+    description: Die E-Mail-Adresse Ihres Viessmann-Kontos
+  password:
+    name: Viessmann Passwort
+    description: Das Passwort Ihres Viessmann-Kontos
+  client_id:
+    name: Client-ID
+    description: OAuth2 Client-ID für den Viessmann-API-Zugriff
+  client_secret:
+    name: Client-Secret
+    description: OAuth2 Client-Secret für den Viessmann-API-Zugriff (optional)
+  redirect_uri:
+    name: Redirect-URI
+    description: OAuth2 Redirect-URI (Standardwert ist 'vicare://oauth-callback/everest')
+  scopes:
+    name: OAuth2-Scopes
+    description: Durch Leerzeichen getrennte Liste von OAuth2-Scopes (optional, verwendet Standard-Scopes falls nicht angegeben)
+  poll_interval:
+    name: Abfrageintervall
+    description: Intervall in Sekunden zwischen API-Abfragen (Standardwert ist automatisch)
+  mqtt_topic:
+    name: MQTT-Topic
+    description: Basis-MQTT-Topic für die Datenveröffentlichung (Standardwert ist 'viessmann2mqtt')
+  mqtt_client_id:
+    name: MQTT-Client-ID
+    description: Benutzerdefinierte MQTT-Client-Kennung (Standardwert ist automatisch generiert)
+  mqtt_retain:
+    name: MQTT Retain
+    description: MQTT-Nachrichten im Broker behalten (Standardwert ist true)
+  mqtt_commands:
+    name: MQTT-Befehle
+    description: MQTT-Befehle zur Gerätesteuerung aktivieren (Standardwert ist true)
+  mqtt_uri:
+    name: MQTT-Broker-URI
+    description: Benutzerdefinierte MQTT-Broker-URI (Standardwert verwendet das MQTT-Add-on von Home Assistant)
+  mqtt_username:
+    name: MQTT-Benutzername
+    description: MQTT-Broker-Benutzername (Standardwert verwendet das MQTT-Add-on von Home Assistant)
+  mqtt_password:
+    name: MQTT-Passwort
+    description: MQTT-Broker-Passwort (Standardwert verwendet das MQTT-Add-on von Home Assistant)
+  verbose:
+    name: Ausführliche Protokollierung
+    description: Detaillierte Debug-Protokollierung aktivieren (Standardwert ist false)

@@ -1,7 +1,7 @@
 name: "Viessmann2MQTT"
 slug: "viessmann2mqtt"
 description: "Poll Viessmann API data and publish it to MQTT with Home Assistant discovery."
-version: "1.0.0"
+version: "latest"
 url: "https://github.com/tomquist/viessmann2mqtt"
 arch:
   - aarch64
@@ -20,11 +20,12 @@ schema:
   password: password
   client_id: str
   client_secret: password?
+  redirect_uri: str?
+  scopes: str?
   poll_interval: int?
   mqtt_topic: str?
   mqtt_client_id: str?
   mqtt_retain: bool?
-  mqtt_discovery: bool?
   mqtt_commands: bool?
   mqtt_uri: str?
   mqtt_username: str?
