@@ -34,21 +34,21 @@ docker run -d \
   tomquist/viessmann2mqtt:latest
 ```
 
-### Home Assistant Add-on
-This repository includes a Home Assistant add-on for running viessmann2mqtt directly inside Home Assistant.
+### Home Assistant App
+This repository includes a Home Assistant App for running viessmann2mqtt directly inside Home Assistant. Home Assistant calls these **Apps (formerly known as add-ons)**.
 
 [![Open your Home Assistant instance and show the add add-on repository dialog with a specific repository URL pre-filled.](https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg)](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2Ftomquist%2Fviessmann2mqtt)
 
-1. Add this repository in **Settings → Add-ons → Add-on Store → Repositories** using the URL of this repo.
-2. Install the **Viessmann2MQTT** add-on.
-3. Configure the Viessmann `username`, `password`, and `client_id` in the add-on configuration.
-4. The add-on will automatically use the Home Assistant MQTT service credentials. Advanced users can override them in YAML mode using `mqtt_uri`, `mqtt_username`, and `mqtt_password`.
+1. Add this repository in **Settings → Apps → App Store → Repositories** using the URL of this repo.
+2. Install the **Viessmann2MQTT** app.
+3. Configure the Viessmann `username`, `password`, and `client_id` in the app configuration.
+4. The app will automatically use the Home Assistant MQTT service credentials. Advanced users can override them in YAML mode using `mqtt_uri`, `mqtt_username`, and `mqtt_password`.
 
-See `viessmann2mqtt/DOCS.md` for the full add-on configuration reference.
+See `viessmann2mqtt/DOCS.md` for the full app configuration reference.
 
-## Home Assistant Add-on Development
+## Home Assistant App Development
 
-For local add-on testing, use the Home Assistant devcontainer setup. This repository includes the recommended devcontainer and VS Code tasks files so you can open the repo in VS Code and run the “Start Home Assistant” task to bootstrap Supervisor and Home Assistant for local add-on testing.
+For local app testing, use the Home Assistant devcontainer setup. This repository includes the recommended devcontainer and VS Code tasks files so you can open the repo in VS Code and run the “Start Home Assistant” task to bootstrap Supervisor and Home Assistant for local app testing.
 
 ## Configuration
 
