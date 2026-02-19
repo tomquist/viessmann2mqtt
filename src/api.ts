@@ -162,9 +162,23 @@ export class ViessmannApi {
       const response = await this.fetch("iot/v2/equipment/installations", {
         params,
       });
-      const result = (await response.json()) as InstallationsResponse;
-      allInstallations.push(...result.data);
-      cursor = result.cursor?.next;
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(
+          `Failed to fetch installations: ${response.status} ${response.statusText} - ${errorText}`,
+        );
+      }
+
+      const result = await response.json();
+      if (!result || !Array.isArray((result as { data?: unknown }).data)) {
+        throw new Error(
+          `Unexpected installations response format: ${JSON.stringify(result).substring(0, 500)}`,
+        );
+      }
+
+      const typedResult = result as InstallationsResponse;
+      allInstallations.push(...typedResult.data);
+      cursor = typedResult.cursor?.next;
     } while (cursor != null && cursor.length > 0);
 
     return {
