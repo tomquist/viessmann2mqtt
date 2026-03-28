@@ -50,16 +50,16 @@ See `viessmann2mqtt/DOCS.md` for the full app configuration reference.
 
 #### Stable vs pre-release install
 
-Home Assistant reads add-on metadata from a **specific Git branch** of this repository. The default branch is **`develop`** (rolling pre-release).
+GitHub’s **default branch is `main`** (stable, versioned releases). Development happens on **`develop`** (rolling pre-release).
 
 | Channel | Add-on repository URL | What you get |
 |--------|------------------------|--------------|
-| **Stable** (recommended) | `https://github.com/tomquist/viessmann2mqtt#main` | Versioned releases on `main` (e.g. `1.1.0`); pre-built images match `config.yaml` version. |
-| **Pre-release** | `https://github.com/tomquist/viessmann2mqtt#develop` | Latest commits on `develop`; `config.yaml` uses `version: next` and CI publishes the `next` image tag. |
+| **Stable** (default) | `https://github.com/tomquist/viessmann2mqtt` or `https://github.com/tomquist/viessmann2mqtt#main` | `config.yaml` on `main` (e.g. `1.1.0`); pre-built images match that version. |
+| **Pre-release** | `https://github.com/tomquist/viessmann2mqtt#develop` | Latest commits on `develop`; `version: next` and the `next` container tag. |
 
-**How to switch or add the repo:** **Settings → Apps → App Store → ⋮ → Repositories** (or **Add repository**). Paste the URL **including** the `#main` or `#develop` fragment so Supervisor pins the branch you want.
+**How to add or switch:** **Settings → Apps → App Store → ⋮ → Repositories**. Use the plain repo URL or `#main` for stable; use **`#develop`** only if you want pre-release builds.
 
-**Pre-release caveat:** The store version often stays `next` while commits move. Supervisor may not show an “update” badge for every push; use **Check for updates** on the repository, or **Rebuild** / **Reinstall** the app if you need the latest `develop` build.
+**Pre-release caveat:** The store version often stays `next` while commits move. Supervisor may not show an “update” for every push; use **Check for updates**, or **Rebuild** / **Reinstall** to pick up the latest `develop` build.
 
 ## Home Assistant App Development
 
@@ -225,7 +225,7 @@ Contributions are welcome! This project follows standard open-source contributio
 
 ### Releases (maintainers)
 
-- Default branch is **`develop`**; **`main`** holds tagged releases. Cut a release from **Actions → Release** (workflow dispatch) with a semver (e.g. `1.2.0`). The workflow runs [`release.sh`](release.sh) and needs a repository secret **`RELEASE_TOKEN`**: a fine-grained personal access token with **Contents: Read and write** on this repository only (see [GitHub docs](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens)).
+- **Default branch is `main`** (what users and HA see by default). Merge releases into `main` from **`develop`** via **Actions → Release** (workflow dispatch) with a semver (e.g. `1.2.0`). The workflow runs [`release.sh`](release.sh) and needs a repository secret **`RELEASE_TOKEN`**: a fine-grained personal access token with **Contents: Read and write** on this repository only (see [GitHub docs](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens)).
 - CI publishes Docker Hub **`latest`** and GHCR add-on **`latest`** on every push to **`main`** (and again on semver tags). **`develop`** pushes use **`edge`** / **`next`**.
 - After the first CI push to GitHub Container Registry, open the **`viessmann2mqtt-addon`** package settings and set visibility to **Public** so Home Assistant Supervisor can pull the add-on image without authentication.
 
