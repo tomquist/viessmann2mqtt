@@ -1,0 +1,57 @@
+name: Release
+
+run-name: Release v${{ github.event.inputs.version }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version (e.g. 1.3.0)"
+        required: true
+        type: string
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout develop
+        uses: actions/checkout@v4
+        with:
+          ref: develop
+          fetch-depth: 0
+          token: ${{ secrets.RELEASE_TOKEN }}
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Run release script
+        run: ./release.sh "${{ github.event.inputs.version }}"
+        env:
+          GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          token: ${{ secrets.RELEASE_TOKEN }}
+          tag_name: ${{ github.event.inputs.version }}
+          name: Release v${{ github.event.inputs.version }}
+          body: |
+            Release v${{ github.event.inputs.version }}
+
+            See [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/${{ github.event.inputs.version }}/CHANGELOG.md) for details.
+          draft: false
+          prerelease: false
+
+      - name: Summary
+        run: |
+          echo "Release v${{ github.event.inputs.version }} completed."
+          echo "Tag: https://github.com/${{ github.repository }}/releases/tag/${{ github.event.inputs.version }}"

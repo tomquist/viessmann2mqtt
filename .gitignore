@@ -3,6 +3,14 @@ bin/
 .idea/
 .env
 
+# Local / OS
+.DS_Store
+.tsc_d
+
+# Local diagnostics / data (not committed)
+data/
+api/
+
 # yarn
 **/.yarn/*
 !**/.yarn/patches

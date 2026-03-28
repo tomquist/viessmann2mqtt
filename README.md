@@ -46,6 +46,10 @@ This repository includes a Home Assistant App for running viessmann2mqtt directl
 
 See `viessmann2mqtt/DOCS.md` for the full app configuration reference.
 
+**Repository branch:** The default branch is **`develop`** (pre-release; `version: next` in `config.yaml`). To install **stable releases** only, add the repository with the **`main`** branch:
+
+`https://github.com/tomquist/viessmann2mqtt#main`
+
 ## Home Assistant App Development
 
 For local app testing, use the Home Assistant devcontainer setup. This repository includes the recommended devcontainer and VS Code tasks files so you can open the repo in VS Code and run the “Start Home Assistant” task to bootstrap Supervisor and Home Assistant for local app testing.
@@ -206,7 +210,7 @@ Contributions are welcome! This project follows standard open-source contributio
 4. **Test manually** - Verify your changes work as expected
 5. **Commit** - Write clear, descriptive commit messages
 6. **Push** - Push to your fork: `git push origin feature/your-feature-name`
-7. **Create PR** - Open a pull request against the `main` branch
+7. **Create PR** - Open a pull request against the `develop` branch
 
 ### Code Style
 

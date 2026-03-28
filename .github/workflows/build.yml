@@ -3,32 +3,42 @@ name: ci
 on:
   push:
     branches:
+      - develop
       - main
+    tags:
+      - "[0-9]*.[0-9]*.[0-9]*"
   pull_request:
     branches:
+      - develop
       - main
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  REGISTRY_GHCR: ghcr.io
+  IMAGE_STANDALONE: tomquist/viessmann2mqtt
+  IMAGE_ADDON: ghcr.io/tomquist/viessmann2mqtt-addon
 
 jobs:
   test:
     runs-on: ubuntu-24.04
     steps:
-      -
-        name: Checkout
+      - name: Checkout
         uses: actions/checkout@v4
-      -
-        name: Setup Node.js
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
-          cache: 'npm'
-      -
-        name: Install dependencies
+          node-version: "20"
+          cache: npm
+      - name: Install dependencies
         run: npm ci
-      -
-        name: Run tests
+      - name: Run tests
         run: npm test
 
-  docker-build:
+  docker-standalone-build:
+    if: github.event_name != 'pull_request'
     needs: test
     strategy:
       fail-fast: false
@@ -42,53 +52,260 @@ jobs:
             platform-id: arm64
     runs-on: ${{ matrix.runner }}
     steps:
-      -
-        name: Checkout
+      - name: Checkout
         uses: actions/checkout@v4
-      -
-        name: Compute app version for Docker (package.json + short SHA)
+
+      - name: App version for Docker
         id: app_version
         run: |
-          PKG_VERSION=$(jq -r .version package.json)
-          echo "v=${PKG_VERSION}-${GITHUB_SHA:0:7}" >> "$GITHUB_OUTPUT"
-      -
-        name: Set up Docker Buildx
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            echo "v=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+          else
+            PKG=$(jq -r .version package.json)
+            echo "v=${PKG}-${GITHUB_SHA:0:7}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Docker metadata (standalone)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_STANDALONE }}
+          tags: |
+            type=raw,value=edge,enable=${{ github.ref == 'refs/heads/develop' }}
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+            type=semver,pattern={{version}}
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/') }}
+
+      - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
-      -
-        name: Login to DockerHub
+
+      - name: Login to DockerHub
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-      -
-        name: Build and push
+
+      - name: Build and push by digest
+        id: build
         uses: docker/build-push-action@v5
         with:
           context: .
           platforms: ${{ matrix.platform }}
           push: true
-          tags: tomquist/viessmann2mqtt:latest-${{ matrix.platform-id }}
+          outputs: type=image,name=${{ env.IMAGE_STANDALONE }},push-by-digest=true,name-canonical=true,push=true
           build-args: |
             V2M_APP_VERSION=${{ steps.app_version.outputs.v }}
+          labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-        id: build
-  docker-manifest:
-    needs: docker-build
+
+      - name: Export digest
+        run: |
+          mkdir -p /tmp/digests
+          digest="${{ steps.build.outputs.digest }}"
+          touch "/tmp/digests/${digest#sha256:}"
+
+      - name: Set platform name
+        id: platform
+        run: |
+          SAFE_PLATFORM=$(echo "${{ matrix.platform }}" | sed 's|/|-|g')
+          echo "name=$SAFE_PLATFORM" >> "$GITHUB_OUTPUT"
+
+      - name: Upload digest
+        uses: actions/upload-artifact@v4
+        with:
+          name: digests-standalone-${{ steps.platform.outputs.name }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  docker-standalone-merge-artifacts:
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
+    needs: docker-standalone-build
     steps:
-      -
-        name: Set up Docker Buildx
+      - name: Merge digest artifacts
+        uses: actions/upload-artifact/merge@v4
+        with:
+          name: digests-standalone
+          pattern: digests-standalone-*
+
+  docker-standalone-merge:
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-24.04
+    needs: docker-standalone-merge-artifacts
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download digests
+        uses: actions/download-artifact@v4
+        with:
+          name: digests-standalone
+          path: /tmp/digests
+
+      - name: Docker metadata (standalone)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_STANDALONE }}
+          tags: |
+            type=raw,value=edge,enable=${{ github.ref == 'refs/heads/develop' }}
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+            type=semver,pattern={{version}}
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/') }}
+
+      - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
-      -
-        name: Login to DockerHub
+
+      - name: Login to DockerHub
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-      -
-        name: Create and push manifest
+
+      - name: Create manifest list and push
+        working-directory: /tmp/digests
+        env:
+          DOCKER_METADATA_OUTPUT_JSON: ${{ steps.meta.outputs.json }}
         run: |
-          docker buildx imagetools create -t tomquist/viessmann2mqtt:latest \
-            tomquist/viessmann2mqtt:latest-amd64 \
-            tomquist/viessmann2mqtt:latest-arm64
+          docker buildx imagetools create $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
+            $(printf '${{ env.IMAGE_STANDALONE }}@sha256:%s ' *)
+
+  docker-addon-build:
+    if: github.event_name != 'pull_request'
+    needs: test
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-24.04
+            platform-id: amd64
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+            platform-id: arm64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: App version for Docker
+        id: app_version
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            echo "v=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+          else
+            PKG=$(jq -r .version package.json)
+            echo "v=${PKG}-${GITHUB_SHA:0:7}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Docker metadata (addon)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_ADDON }}
+          tags: |
+            type=raw,value=next,enable=${{ github.ref == 'refs/heads/develop' }}
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+            type=semver,pattern={{version}}
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/') }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY_GHCR }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push by digest
+        id: build
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          platforms: ${{ matrix.platform }}
+          push: true
+          outputs: type=image,name=${{ env.IMAGE_ADDON }},push-by-digest=true,name-canonical=true,push=true
+          build-args: |
+            BUILD_HA_ADDON=true
+            V2M_APP_VERSION=${{ steps.app_version.outputs.v }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Export digest
+        run: |
+          mkdir -p /tmp/addon-digests
+          digest="${{ steps.build.outputs.digest }}"
+          touch "/tmp/addon-digests/${digest#sha256:}"
+
+      - name: Set platform name
+        id: platform
+        run: |
+          SAFE_PLATFORM=$(echo "${{ matrix.platform }}" | sed 's|/|-|g')
+          echo "name=$SAFE_PLATFORM" >> "$GITHUB_OUTPUT"
+
+      - name: Upload digest
+        uses: actions/upload-artifact@v4
+        with:
+          name: digests-addon-${{ steps.platform.outputs.name }}
+          path: /tmp/addon-digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  docker-addon-merge-artifacts:
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-24.04
+    needs: docker-addon-build
+    steps:
+      - name: Merge digest artifacts
+        uses: actions/upload-artifact/merge@v4
+        with:
+          name: digests-addon
+          pattern: digests-addon-*
+
+  docker-addon-merge:
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-24.04
+    needs: docker-addon-merge-artifacts
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download digests
+        uses: actions/download-artifact@v4
+        with:
+          name: digests-addon
+          path: /tmp/addon-digests
+
+      - name: Docker metadata (addon)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_ADDON }}
+          tags: |
+            type=raw,value=next,enable=${{ github.ref == 'refs/heads/develop' }}
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+            type=semver,pattern={{version}}
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/') }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY_GHCR }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create manifest list and push
+        working-directory: /tmp/addon-digests
+        env:
+          DOCKER_METADATA_OUTPUT_JSON: ${{ steps.meta.outputs.json }}
+        run: |
+          docker buildx imagetools create $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
+            $(printf '${{ env.IMAGE_ADDON }}@sha256:%s ' *)
