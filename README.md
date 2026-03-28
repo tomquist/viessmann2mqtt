@@ -212,6 +212,11 @@ Contributions are welcome! This project follows standard open-source contributio
 6. **Push** - Push to your fork: `git push origin feature/your-feature-name`
 7. **Create PR** - Open a pull request against the `develop` branch
 
+### Releases (maintainers)
+
+- Default branch is **`develop`**; **`main`** holds tagged releases. Cut a release from **Actions → Release** (workflow dispatch) with a semver (e.g. `1.2.0`). The workflow runs [`release.sh`](release.sh) and needs a repository secret **`RELEASE_TOKEN`**: a fine-grained personal access token with **Contents: Read and write** on this repository only (see [GitHub docs](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens)).
+- After the first CI push to GitHub Container Registry, open the **`viessmann2mqtt-addon`** package settings and set visibility to **Public** so Home Assistant Supervisor can pull the add-on image without authentication.
+
 ### Code Style
 
 - Follow the existing code style and patterns
