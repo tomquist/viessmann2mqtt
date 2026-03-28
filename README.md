@@ -25,7 +25,7 @@ V2M_USERNAME='***' \
 ```
 
 ### Docker
-The **`latest`** tag on Docker Hub tracks the **most recent semver release** (git tag), not arbitrary pushes to `main`. Rolling builds from `develop` use the **`edge`** tag.
+The **`latest`** tag on Docker Hub matches the **`main`** branch (stable line). Rolling builds from **`develop`** use the **`edge`** tag.
 
 ```bash
 docker run -d \
@@ -226,7 +226,7 @@ Contributions are welcome! This project follows standard open-source contributio
 ### Releases (maintainers)
 
 - Default branch is **`develop`**; **`main`** holds tagged releases. Cut a release from **Actions → Release** (workflow dispatch) with a semver (e.g. `1.2.0`). The workflow runs [`release.sh`](release.sh) and needs a repository secret **`RELEASE_TOKEN`**: a fine-grained personal access token with **Contents: Read and write** on this repository only (see [GitHub docs](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens)).
-- CI sets Docker Hub **`latest`** and GHCR add-on **`latest`** only when a **version tag** is built—not on pushes to `main` alone.
+- CI publishes Docker Hub **`latest`** and GHCR add-on **`latest`** on every push to **`main`** (and again on semver tags). **`develop`** pushes use **`edge`** / **`next`**.
 - After the first CI push to GitHub Container Registry, open the **`viessmann2mqtt-addon`** package settings and set visibility to **Public** so Home Assistant Supervisor can pull the add-on image without authentication.
 
 ### Code Style

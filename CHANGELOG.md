@@ -8,7 +8,7 @@
 - Home Assistant: discovery, MQTT command handling, device availability, and reported software version (`V2M_APP_VERSION` / `origin.sw_version`) improvements.
 - Home Assistant: MQTT discovery uses `default_entity_id` instead of deprecated `object_id`.
 - Home Assistant: keep bus topology metadata out of sensor state payloads (only the intended metric is published as state).
-- Build and release: pre-built add-on images on GitHub Container Registry (`image` in `config.yaml`), `aarch64`/`amd64` only in `config.yaml`, `develop`/`main` branching, `release.sh` and Release workflow, Docker Hub / GHCR multi-arch tags (`edge` on `develop`, `next` pre-release add-on, semver + **`latest` only on tagged releases**—not on every `main` push), and maintainer notes for `RELEASE_TOKEN` and public GHCR packages.
+- Build and release: pre-built add-on images on GitHub Container Registry (`image` in `config.yaml`), `aarch64`/`amd64` only in `config.yaml`, `develop`/`main` branching, `release.sh` and Release workflow, Docker Hub / GHCR multi-arch tags (`edge`/`next` on `develop`, **`latest` on `main`** and semver tags), and maintainer notes for `RELEASE_TOKEN` and public GHCR packages.
 
 ## 1.0.0
 - Initial Home Assistant add-on support.
