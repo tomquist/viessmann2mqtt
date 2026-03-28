@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
 import { HomeAssistantDiscovery } from "../homeassistant.js";
 import { HeatingDevice } from "../heating.js";
@@ -5,6 +7,10 @@ import { DeviceFactory } from "../factory.js";
 import { Feature } from "../../models.js";
 import { DeviceAccessor, DeviceModel } from "../base.js";
 import { loadAnonymizedDiagnosticsData } from "./test-helpers.js";
+
+const packageVersion = JSON.parse(
+  readFileSync(join(process.cwd(), "package.json"), "utf-8"),
+) as { version: string };
 
 // Load diagnostics data with anonymized serial numbers
 const diagnosticsData = loadAnonymizedDiagnosticsData();
@@ -80,7 +86,33 @@ describe("HomeAssistantDiscovery", () => {
 
       expect(config.origin).toBeDefined();
       expect(config.origin.name).toBe("viessmann2mqtt");
-      expect(config.origin.sw_version).toBeDefined();
+      expect(config.origin.sw_version).toBe(packageVersion.version);
+    });
+
+    it("should include MQTT availability for bridge online/offline status", () => {
+      const config = discovery.generateDeviceDiscoveryConfig(device, features);
+      expect(config.availability).toBeDefined();
+      expect(Array.isArray(config.availability)).toBe(true);
+      expect(config.availability![0]).toMatchObject({
+        topic: "homeassistant/status",
+        payload_available: "online",
+        payload_not_available: "offline",
+      });
+    });
+
+    it("should not set MQTT abbreviation-only keys on components", () => {
+      const config = discovery.generateDeviceDiscoveryConfig(device, features);
+      for (const component of Object.values(config.components)) {
+        expect(component).not.toHaveProperty("ent_cat");
+        expect(component).not.toHaveProperty("en");
+      }
+    });
+
+    it("should set object_id on each component to the component key", () => {
+      const config = discovery.generateDeviceDiscoveryConfig(device, features);
+      for (const [key, component] of Object.entries(config.components)) {
+        expect(component.object_id).toBe(key);
+      }
     });
 
     it("should include components", () => {
@@ -265,6 +297,135 @@ describe("HomeAssistantDiscovery", () => {
 
       expect(burnerHours.unit_of_measurement).toBe("h");
       expect(burnerStarts.unit_of_measurement).toBe("count");
+      expect(burnerHours.device_class).toBe("duration");
+      expect(burnerHours.value_template).toContain("{% if value_json is defined");
+      expect(burnerHours.value_template).toContain("| float");
+    });
+
+    it("should map HA auto climate command to weather-controlled Viessmann mode when available", () => {
+      const tmpl = HomeAssistantDiscovery.buildModeCommandTemplate("mode", [
+        "standby",
+        "heating",
+        "dhwAndHeatingWeatherControlled",
+      ]);
+      expect(tmpl).toContain("dhwAndHeatingWeatherControlled");
+    });
+
+    it("should set day/currentDay consumption without entity_category and week as diagnostic", () => {
+      const accessor: DeviceAccessor = {
+        installationId: 1,
+        gatewayId: "GW",
+        deviceId: "0",
+      };
+      const deviceModel: DeviceModel = {
+        id: "0",
+        modelId: "M",
+        gatewaySerial: "GW",
+        boilerSerial: "",
+        boilerSerialEditor: "",
+        bmuSerial: null,
+        bmuSerialEditor: null,
+        createdAt: "",
+        editedAt: "",
+        status: "",
+        deviceType: "",
+        roles: [],
+      };
+      const consumptionFeatures = [
+        {
+          feature: "heating.gas.consumption.heating",
+          gatewayId: "GW",
+          deviceId: "0",
+          timestamp: "",
+          isEnabled: true,
+          isReady: true,
+          apiVersion: 1,
+          uri: "",
+          properties: {
+            day: { type: "array", value: [1.2], unit: "kilowatthour" },
+            currentDay: { type: "number", value: 3.4, unit: "kilowatthour" },
+            week: { type: "array", value: [10], unit: "kilowatthour" },
+            month: { type: "array", value: [20], unit: "kilowatthour" },
+          },
+          commands: {},
+        },
+      ] as unknown as Feature[];
+      // DeviceFactory falls through to Hybrid (modelPattern /.*/) which extends GazBoiler and
+      // registers gas consumption via TimeBasedSensor — skipping auto time-split. Use HeatingDevice directly.
+      const dev = new HeatingDevice(
+        accessor,
+        deviceModel.roles,
+        deviceModel,
+        consumptionFeatures,
+      );
+      const disc = new HomeAssistantDiscovery("mqtt", 1, "GW", "0");
+      const cfg = disc.generateDeviceDiscoveryConfig(dev, consumptionFeatures);
+      const dayKey = Object.keys(cfg.components).find((k) => k.endsWith("_day"));
+      const weekKey = Object.keys(cfg.components).find((k) => k.endsWith("_week"));
+      expect(dayKey).toBeDefined();
+      expect(weekKey).toBeDefined();
+      expect(cfg.components[dayKey!].entity_category).toBeUndefined();
+      expect(cfg.components[weekKey!].entity_category).toBe("diagnostic");
+    });
+
+    it("should set optimistic on boolean command switches", () => {
+      const accessor: DeviceAccessor = {
+        installationId: 1,
+        gatewayId: "GW",
+        deviceId: "0",
+      };
+      const deviceModel: DeviceModel = {
+        id: "0",
+        modelId: "M",
+        gatewaySerial: "GW",
+        boilerSerial: "",
+        boilerSerialEditor: "",
+        bmuSerial: null,
+        bmuSerialEditor: null,
+        createdAt: "",
+        editedAt: "",
+        status: "",
+        deviceType: "",
+        roles: ["type:boiler"],
+      };
+      const features: Feature[] = [
+        {
+          feature: "heating.circuits.0.operating.programs.comfort",
+          gatewayId: "GW",
+          deviceId: "0",
+          timestamp: "",
+          isEnabled: true,
+          isReady: true,
+          apiVersion: 1,
+          uri: "",
+          properties: {
+            active: { type: "boolean", value: true },
+          },
+          commands: {
+            setActive: {
+              uri: "",
+              name: "setActive",
+              isExecutable: true,
+              params: {
+                active: { type: "boolean", required: true, constraints: {} },
+              },
+            },
+          },
+        },
+      ];
+      const dev = DeviceFactory.createDevice(
+        accessor,
+        deviceModel.roles,
+        deviceModel,
+        features,
+      ) as HeatingDevice;
+      const disc = new HomeAssistantDiscovery("mqtt", 1, "GW", "0");
+      const cfg = disc.generateDeviceDiscoveryConfig(dev, features);
+      const sw = Object.values(cfg.components).find(
+        (c) => c.platform === "switch" && c.command_topic?.includes("setActive"),
+      );
+      expect(sw).toBeDefined();
+      expect(sw!.optimistic).toBe(true);
     });
 
     it("should consolidate activate/deactivate/setActive with boolean active into one optimistic switch", () => {
@@ -278,6 +439,10 @@ describe("HomeAssistantDiscovery", () => {
       expect(oneTime.command_topic).toContain("/commands/setActive/set");
       expect(oneTime.payload_on).toBe(JSON.stringify({ active: true }));
       expect(oneTime.payload_off).toBe(JSON.stringify({ active: false }));
+      expect(oneTime.state_topic).toContain("/features/heating.dhw.oneTimeCharge");
+      expect(oneTime.value_template).toContain("properties.active.value");
+      expect(oneTime.state_on).toBe("ON");
+      expect(oneTime.state_off).toBe("OFF");
       expect(oneTime.name).toBeDefined();
       expect(config.components[`${baseKey}_activate`.toLowerCase()]).toBeUndefined();
       expect(config.components[`${baseKey}_deactivate`.toLowerCase()]).toBeUndefined();

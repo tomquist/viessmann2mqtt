@@ -26,6 +26,11 @@ FROM ${BUILD_FROM}
 
 ARG BUILD_HA_ADDON=false
 
+# Optional: version shown in HA discovery (`origin.sw_version`). Runtime image has no package.json;
+# pass at build time, e.g. --build-arg V2M_APP_VERSION="$(node -p \"require('./package.json').version\")-$(git rev-parse --short HEAD)"
+ARG V2M_APP_VERSION=
+ENV V2M_APP_VERSION=${V2M_APP_VERSION}
+
 # For Home Assistant addon: install nodejs/npm
 RUN if [ "$BUILD_HA_ADDON" = "true" ]; then \
       if [ ! -x "$(command -v node)" ]; then \

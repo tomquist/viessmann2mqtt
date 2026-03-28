@@ -46,6 +46,12 @@ jobs:
         name: Checkout
         uses: actions/checkout@v4
       -
+        name: Compute app version for Docker (package.json + short SHA)
+        id: app_version
+        run: |
+          PKG_VERSION=$(jq -r .version package.json)
+          echo "v=${PKG_VERSION}-${GITHUB_SHA:0:7}" >> "$GITHUB_OUTPUT"
+      -
         name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
       -
@@ -62,6 +68,8 @@ jobs:
           platforms: ${{ matrix.platform }}
           push: true
           tags: tomquist/viessmann2mqtt:latest-${{ matrix.platform-id }}
+          build-args: |
+            V2M_APP_VERSION=${{ steps.app_version.outputs.v }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
         id: build

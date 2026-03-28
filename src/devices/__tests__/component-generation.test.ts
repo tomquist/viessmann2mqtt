@@ -3,6 +3,7 @@ import { HeatingCircuit, HeatingDevice } from "../heating.js";
 import { DeviceFactory } from "../factory.js";
 import { Feature } from "../../models.js";
 import { DeviceAccessor, DeviceModel } from "../base.js";
+import { HomeAssistantDiscovery } from "../homeassistant.js";
 import { loadAnonymizedDiagnosticsData } from "./test-helpers.js";
 
 // Load diagnostics data with anonymized serial numbers
@@ -168,6 +169,111 @@ describe("Component Generation", () => {
           expect(component.state_topic).toContain("/features/");
         }
       }
+    });
+  });
+
+  describe("Device class and unit from property data (auto-generated sensors)", () => {
+    const accessor: DeviceAccessor = {
+      installationId: 1,
+      gatewayId: "GW",
+      deviceId: "99",
+    };
+
+    const baseModel: DeviceModel = {
+      id: "99",
+      modelId: "Test-Unit",
+      gatewaySerial: "GW",
+      boilerSerial: "",
+      boilerSerialEditor: "",
+      bmuSerial: null,
+      bmuSerialEditor: null,
+      createdAt: "",
+      editedAt: "",
+      status: "",
+      deviceType: "",
+      roles: [],
+    };
+
+    it("should map duration, volume, and volume_flow_rate from normalized units", () => {
+      // Synthetic units for HA mapping (API `Unit` union is narrower than strings Viessmann may return)
+      const features = [
+        {
+          feature: "heating.diagnostics.pumpRuntime",
+          gatewayId: "GW",
+          deviceId: "99",
+          timestamp: "",
+          isEnabled: true,
+          isReady: true,
+          apiVersion: 1,
+          uri: "",
+          properties: {
+            value: { type: "number" as const, value: 12, unit: "hour" },
+          },
+          commands: {},
+        },
+        {
+          feature: "heating.sensors.volume.buffer",
+          gatewayId: "GW",
+          deviceId: "99",
+          timestamp: "",
+          isEnabled: true,
+          isReady: true,
+          apiVersion: 1,
+          uri: "",
+          properties: {
+            value: { type: "number" as const, value: 1.5, unit: "cubicMeter" },
+          },
+          commands: {},
+        },
+        {
+          feature: "heating.sensors.volumetricFlow.supply",
+          gatewayId: "GW",
+          deviceId: "99",
+          timestamp: "",
+          isEnabled: true,
+          isReady: true,
+          apiVersion: 1,
+          uri: "",
+          properties: {
+            value: { type: "number" as const, value: 8, unit: "liter/hour" },
+          },
+          commands: {},
+        },
+      ] as Feature[];
+      const dev = new HeatingDevice(accessor, baseModel.roles, baseModel, features);
+      const disc = new HomeAssistantDiscovery("mqtt", 1, "GW", "99");
+      const cfg = disc.generateDeviceDiscoveryConfig(dev, features);
+
+      expect(cfg.components.diagnostics_pumpRuntime.device_class).toBe("duration");
+      expect(cfg.components.sensors_volume_buffer.device_class).toBe("volume");
+      expect(cfg.components.sensors_volumetricFlow_supply.device_class).toBe(
+        "volume_flow_rate",
+      );
+    });
+
+    it("should use Fahrenheit from property unit for temperature sensors", () => {
+      const features: Feature[] = [
+        {
+          feature: "heating.sensors.temperature.buffer",
+          gatewayId: "GW",
+          deviceId: "99",
+          timestamp: "",
+          isEnabled: true,
+          isReady: true,
+          apiVersion: 1,
+          uri: "",
+          properties: {
+            value: { type: "number", value: 72, unit: "fahrenheit" },
+          },
+          commands: {},
+        },
+      ];
+      const dev = new HeatingDevice(accessor, baseModel.roles, baseModel, features);
+      const disc = new HomeAssistantDiscovery("mqtt", 1, "GW", "99");
+      const cfg = disc.generateDeviceDiscoveryConfig(dev, features);
+
+      expect(cfg.components.sensors_temperature_buffer.unit_of_measurement).toBe("°F");
+      expect(cfg.components.sensors_temperature_buffer.device_class).toBe("temperature");
     });
   });
 });

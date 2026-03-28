@@ -286,7 +286,13 @@ export abstract class Device {
     // Check feature path for device class and unit hints
     if (featurePath.includes("temperature")) {
       deviceClass = "temperature";
-      unitOfMeasurement = "°C";
+      const tempProp = properties[detectedPropKey] as Record<string, unknown> | undefined;
+      if (tempProp && typeof tempProp === "object" && "unit" in tempProp) {
+        const normalized = normalizeUnit(tempProp.unit as string);
+        unitOfMeasurement = normalized ?? "°C";
+      } else {
+        unitOfMeasurement = "°C";
+      }
     } else if (featurePath.includes("wifi") && propertyPath.includes("strength")) {
       // WiFi signal strength (RSSI) - measured in dBm
       deviceClass = "signal_strength";
@@ -438,6 +444,17 @@ export abstract class Device {
             }
           }
         }
+      }
+    }
+
+    // Infer device class from normalized unit when path did not set one (HA 2026 sensor classes)
+    if (!deviceClass && unitOfMeasurement) {
+      if (unitOfMeasurement === "h" || unitOfMeasurement === "min" || unitOfMeasurement === "s") {
+        deviceClass = "duration";
+      } else if (unitOfMeasurement === "m³") {
+        deviceClass = "volume";
+      } else if (unitOfMeasurement === "L/h") {
+        deviceClass = "volume_flow_rate";
       }
     }
 

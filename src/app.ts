@@ -44,7 +44,14 @@ async function run(): Promise<void> {
   { timestamp: string; properties: Record<string, Property> }
   > = new Map();
 
-  const publisher = new Publisher(config.mqttUrl, config.mqttRetain, config.mqttClientId.length > 0 ? config.mqttClientId : undefined, config.mqttUsername, config.mqttPassword);
+  const publisher = new Publisher(
+    config.mqttUrl,
+    config.mqttRetain,
+    config.mqttClientId.length > 0 ? config.mqttClientId : undefined,
+    config.mqttUsername,
+    config.mqttPassword,
+    config.mqttTopic,
+  );
 
   if (config.mqttCommands) {
     const commandSubscriber = new CommandSubscriber(

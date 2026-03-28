@@ -1,6 +1,7 @@
 import { Device } from "./base.js";
 import { getDiscoverableMethods } from "./discovery.js";
 import { Feature as ApiFeature, Command } from "../models.js";
+import { resolveAppVersion } from "../version.js";
 
 // Re-export utility functions from homeassistant-utils for backward compatibility
 export {
@@ -8,6 +9,8 @@ export {
   mapViessmannModesToHomeAssistant,
   generateModeMappingTemplate,
   safeValueTemplate,
+  safeNumericFloatTemplate,
+  safeNumericIntTemplate,
   percentageValueTemplate,
   getFeatureName,
   generateTimeBasedComponents,
@@ -19,6 +22,8 @@ import {
   getFeatureName,
   normalizeUnit,
   percentageValueTemplate,
+  safeNumericFloatTemplate,
+  safeNumericIntTemplate,
   safeValueTemplate,
 } from "./homeassistant-utils.js";
 
@@ -126,7 +131,7 @@ export class HomeAssistantDiscovery {
 
     const origin = {
       name: "viessmann2mqtt",
-      sw_version: "1.0.0",
+      sw_version: resolveAppVersion(),
     };
 
     const components: Record<string, {
@@ -229,10 +234,21 @@ export class HomeAssistantDiscovery {
       filteredComponents[componentKey] = component;
     }
 
+    for (const [key, component] of Object.entries(filteredComponents)) {
+      component.object_id = key;
+    }
+
     return {
       device: deviceInfo,
       origin,
       components: filteredComponents,
+      availability: [
+        {
+          topic: `${this.baseTopic}/status`,
+          payload_available: "online",
+          payload_not_available: "offline",
+        },
+      ],
     };
   }
 
@@ -323,7 +339,6 @@ export class HomeAssistantDiscovery {
         );
         if (entityCategory) {
           componentConfig.entity_category = entityCategory;
-          componentConfig.ent_cat = entityCategory; // Abbreviation
         }
       }
 
@@ -908,13 +923,30 @@ export class HomeAssistantDiscovery {
     return `{"${paramName}": {{ value | tojson }}}`;
   }
 
-  private static buildModeCommandTemplate(
+  /**
+   * Matches mapViessmannModeToHomeAssistant: weather-controlled modes map to HA "auto".
+   */
+  static findWeatherControlledViessmannMode(
+    allowedModes?: string[],
+  ): string | undefined {
+    return allowedModes?.find(
+      (m) => m.includes("Weather") && !m.includes("Room"),
+    );
+  }
+
+  /** Public for tests; used by enhanceComponentsWithCommands for climate mode_command_template. */
+  static buildModeCommandTemplate(
     paramName: string,
     allowedModes?: string[],
   ): string {
     const hasStandby = allowedModes?.includes("standby");
     const hasHeating = allowedModes?.includes("heating");
-    return `{% set mode = value %}{% if mode == "off" %}{% set mode = "${hasStandby ? "standby" : "off"}" %}{% elif mode == "heat" %}{% set mode = "${hasHeating ? "heating" : "heat"}" %}{% elif mode == "auto" %}{% set mode = "${hasHeating ? "heating" : "auto"}" %}{% endif %}{"${paramName}": "{{ mode }}"}`;
+    const hasAutoLiteral = allowedModes?.includes("auto");
+    const weatherMode =
+      HomeAssistantDiscovery.findWeatherControlledViessmannMode(allowedModes);
+    const autoTarget =
+      weatherMode ?? (hasAutoLiteral ? "auto" : hasHeating ? "heating" : "heat");
+    return `{% set mode = value %}{% if mode == "off" %}{% set mode = "${hasStandby ? "standby" : "off"}" %}{% elif mode == "heat" %}{% set mode = "${hasHeating ? "heating" : "heat"}" %}{% elif mode == "auto" %}{% set mode = "${autoTarget}" %}{% endif %}{"${paramName}": "{{ mode }}"}`;
   }
 
   private static buildCommandComponentName(
@@ -1107,15 +1139,12 @@ export class HomeAssistantDiscovery {
     isServiceCommand: boolean,
   ): void {
     if (isServiceCommand) {
-      // Use both full name and abbreviation for compatibility
       component.enabled_by_default = false;
-      component.en = false; // Abbreviation for MQTT discovery
       // entity_category: "config" marks command/control entities as configuration-only
       // Only set for non-sensor platforms to avoid hiding sensor components
       const isCommandComponent = ["number", "select", "switch", "button", "text", "climate"].includes(component.platform);
       if (isCommandComponent) {
         component.entity_category = "config";
-        component.ent_cat = "config"; // Abbreviation for MQTT discovery
       }
     }
   }
@@ -1352,6 +1381,8 @@ export class HomeAssistantDiscovery {
             command_topic: this.generateCommandTopic(feature.feature, "setActive"),
             payload_on: JSON.stringify({ active: true }),
             payload_off: JSON.stringify({ active: false }),
+            state_on: "ON",
+            state_off: "OFF",
             optimistic: true,
             ...stateConfig,
           };
@@ -1659,6 +1690,9 @@ export class HomeAssistantDiscovery {
               ),
               payload_on: `{"${paramName}": true}`,
               payload_off: `{"${paramName}": false}`,
+              state_on: "ON",
+              state_off: "OFF",
+              optimistic: true,
               ...stateConfig,
             };
             HomeAssistantDiscovery.addServiceCommandProperties(component, isServiceCommand);
@@ -1826,6 +1860,9 @@ export class HomeAssistantDiscovery {
                 ),
                 payload_on: `{"${paramName}": true}`,
                 payload_off: `{"${paramName}": false}`,
+                state_on: "ON",
+                state_off: "OFF",
+                optimistic: true,
                 ...stateConfig,
               };
               HomeAssistantDiscovery.addServiceCommandProperties(component, isServiceCommand);
@@ -2001,20 +2038,21 @@ export class HomeAssistantDiscovery {
             unique_id: `viessmann_${this.installationId}_${this.gatewayId}_${this.deviceId}_${componentKey}_count_${countIndex}`,
             name: `${featureName} Count ${countIndex}`,
             state_topic: `${this.baseTopic}/installations/${this.installationId}/gateways/${this.gatewayId}/devices/${this.deviceId}/features/${featurePath}`,
-            value_template: `{{ value_json.properties.${countKey}.value | int }}`,
-            // Count sensors are numeric, so state_class is safe
-            state_class: "measurement",
-            ...(unitOfMeasurement && { unit_of_measurement: unitOfMeasurement }),
+            value_template: safeNumericIntTemplate(`${countKey}.value`),
+            ...(unitOfMeasurement
+              ? {
+                  state_class: "measurement" as const,
+                  unit_of_measurement: unitOfMeasurement,
+                }
+              : {}),
           };
           // Mark service technician features as disabled
           // Don't set entity_category for sensors - just disable them
           if (HomeAssistantDiscovery.isServiceTechnicianFeature(featurePath)) {
             countComponent.enabled_by_default = false;
-            countComponent.en = false; // Abbreviation
           }
           // Count sensors are diagnostic (historical data)
           countComponent.entity_category = "diagnostic";
-          countComponent.ent_cat = "diagnostic"; // Abbreviation
           components[`${componentKey}_count_${countIndex}`] = countComponent;
         }
         continue; // Skip rest of loop - timeseries handled
@@ -2072,7 +2110,6 @@ export class HomeAssistantDiscovery {
           
           // Mark as diagnostic/configuration entity
           componentConfig.entity_category = "diagnostic";
-          componentConfig.ent_cat = "diagnostic"; // Abbreviation
           
           components[propComponentKey] = componentConfig;
         }
@@ -2116,7 +2153,7 @@ export class HomeAssistantDiscovery {
             unique_id: `viessmann_${this.installationId}_${this.gatewayId}_${this.deviceId}_${propComponentKey}`,
             name: `${featureName} ${propName}`,
             state_topic: `${this.baseTopic}/installations/${this.installationId}/gateways/${this.gatewayId}/devices/${this.deviceId}/features/${featurePath}`,
-            value_template: `{{ value_json.properties.${propKey}.value | float }}`,
+            value_template: safeNumericFloatTemplate(`${propKey}.value`),
           };
 
           if (deviceClass && unitOfMeasurement) {
@@ -2128,13 +2165,13 @@ export class HomeAssistantDiscovery {
 
           if (propKey.toLowerCase().includes("starts")) {
             componentConfig.state_class = "total_increasing";
+          } else if (deviceClass === "energy") {
+            componentConfig.state_class = "total_increasing";
           }
 
           if (HomeAssistantDiscovery.isServiceTechnicianFeature(featurePath)) {
             componentConfig.enabled_by_default = false;
-            componentConfig.en = false;
             componentConfig.entity_category = "diagnostic";
-            componentConfig.ent_cat = "diagnostic";
           } else {
             const entityCategory = HomeAssistantDiscovery.determineEntityCategory(
               featurePath,
@@ -2144,7 +2181,6 @@ export class HomeAssistantDiscovery {
             );
             if (entityCategory) {
               componentConfig.entity_category = entityCategory;
-              componentConfig.ent_cat = entityCategory;
             }
           }
 
@@ -2250,11 +2286,21 @@ export class HomeAssistantDiscovery {
           // Don't set entity_category for sensors - just disable them
           if (HomeAssistantDiscovery.isServiceTechnicianFeature(featurePath)) {
             timeComponentConfig.enabled_by_default = false;
-            timeComponentConfig.en = false; // Abbreviation
           }
-          // Time-based sensors (week/month/year) are diagnostic (historical data)
-          timeComponentConfig.entity_category = "diagnostic";
-          timeComponentConfig.ent_cat = "diagnostic"; // Abbreviation
+          if (finalTimeDeviceClass === "energy") {
+            timeComponentConfig.state_class = "total_increasing";
+          }
+          const diagnosticTimeKeys = new Set([
+            "week",
+            "month",
+            "year",
+            "lastMonth",
+            "lastYear",
+            "lastSevenDays",
+          ]);
+          if (diagnosticTimeKeys.has(timeKey)) {
+            timeComponentConfig.entity_category = "diagnostic";
+          }
 
           components[timeComponentKey] = timeComponentConfig;
         }
@@ -2324,14 +2370,7 @@ export class HomeAssistantDiscovery {
         const isNumericProperty = prop && typeof prop === "object" && "type" in prop && prop.type === "number";
         
         if (isNumericProperty && propertyPath.includes(".value") && !propertyPath.includes("[")) {
-          // Use direct template with float filter to ensure numeric output
-          // Handle both "value.value" and "prop.value" paths
-          if (propertyPath === "value.value") {
-            valueTemplate = "{{ value_json.properties.value.value | float }}";
-          } else {
-            const propPathWithoutValue = propertyPath.replace(".value", "");
-            valueTemplate = `{{ value_json.properties.${propPathWithoutValue}.value | float }}`;
-          }
+          valueTemplate = safeNumericFloatTemplate(propertyPath);
         } else {
           valueTemplate = safeValueTemplate(propertyPath, false);
         }
@@ -2373,13 +2412,24 @@ export class HomeAssistantDiscovery {
         componentConfig.unit_of_measurement = unitOfMeasurement;
       }
 
+      if (platform === "sensor" && deviceClass === "energy") {
+        componentConfig.state_class = "total_increasing";
+      }
+
       // Add state_class for numeric sensors to help Home Assistant recognize them as numbers
       // Only set if we're certain the value will be numeric (not an array or object)
       if (platform === "sensor" && !deviceClass) {
         // Check if this is a numeric sensor (has a numeric value property)
         const propKey = propertyPath.split(".")[0];
         const prop = properties[propKey] as Record<string, unknown> | undefined;
+        const unitStr =
+          prop && typeof prop === "object" && "unit" in prop
+            ? (prop as { unit?: string }).unit
+            : undefined;
+        const hasNonEmptyUnit =
+          typeof unitStr === "string" && unitStr.trim() !== "";
         if (
+          hasNonEmptyUnit &&
           prop &&
           typeof prop === "object" &&
           "type" in prop &&
@@ -2389,7 +2439,6 @@ export class HomeAssistantDiscovery {
           !Array.isArray(prop.value) &&
           !propertyPath.includes("[") // Don't set state_class for array access paths
         ) {
-          // Only set state_class if the actual value is numeric (not an array or object)
           componentConfig.state_class = "measurement";
         }
       }
@@ -2397,11 +2446,9 @@ export class HomeAssistantDiscovery {
       // Mark service technician features as disabled
       if (HomeAssistantDiscovery.isServiceTechnicianFeature(featurePath)) {
         componentConfig.enabled_by_default = false;
-        componentConfig.en = false; // Abbreviation
         // Service technician sensors should use "diagnostic" category, not "config"
         // Only command/control components can use "config" category
         componentConfig.entity_category = "diagnostic";
-        componentConfig.ent_cat = "diagnostic"; // Abbreviation
       } else {
         // Set entity_category for diagnostic sensors (non-service technician)
         const entityCategory = HomeAssistantDiscovery.determineEntityCategory(
@@ -2412,7 +2459,6 @@ export class HomeAssistantDiscovery {
         );
         if (entityCategory) {
           componentConfig.entity_category = entityCategory;
-          componentConfig.ent_cat = entityCategory; // Abbreviation
         }
       }
 

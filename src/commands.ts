@@ -7,6 +7,47 @@ const { connectAsync } = asyncMqtt;
 
 type CommandPayload = Record<string, unknown> | string | number | boolean | null;
 
+/**
+ * Read current value for a command parameter from feature properties (e.g. slope -> properties.slope.value).
+ * Exported for unit tests and reuse.
+ */
+export function getCommandParamDefaultFromFeature(
+  feature: Feature,
+  paramName: string,
+): unknown | undefined {
+  const props = feature.properties as Record<string, unknown> | undefined;
+  if (!props) {
+    return undefined;
+  }
+  const prop = props[paramName];
+  if (prop && typeof prop === "object" && prop !== null && "value" in prop) {
+    return (prop as { value?: unknown }).value;
+  }
+  return undefined;
+}
+
+/**
+ * Merge missing required multi-param keys from current feature state so partial MQTT payloads work.
+ * Exported for unit tests.
+ */
+export function mergeMultiParamPayloadFromFeature(
+  command: Command,
+  payload: Record<string, unknown>,
+  feature: Feature,
+): Record<string, unknown> {
+  const merged: Record<string, unknown> = { ...payload };
+  const entries = Object.entries(command.params ?? {});
+  for (const [paramName, paramDef] of entries) {
+    if (!(paramName in merged) && paramDef.required) {
+      const v = getCommandParamDefaultFromFeature(feature, paramName);
+      if (v !== undefined) {
+        merged[paramName] = v;
+      }
+    }
+  }
+  return merged;
+}
+
 export class CommandSubscriber {
   private client: AsyncMqttClient | undefined;
 
@@ -185,6 +226,7 @@ export class CommandSubscriber {
   private buildParams(
     command: Command,
     payload: CommandPayload,
+    feature?: Feature | null,
   ): { params?: Record<string, unknown>; error?: string } {
     const entries = Object.entries(command.params ?? {});
     if (entries.length === 0) {
@@ -214,9 +256,14 @@ export class CommandSubscriber {
       return { error: "Expected JSON object payload for multi-parameter command" };
     }
 
+    let effectivePayload: Record<string, unknown> = payload;
+    if (feature && entries.length > 1) {
+      effectivePayload = mergeMultiParamPayloadFromFeature(command, payload, feature);
+    }
+
     const params: Record<string, unknown> = {};
     for (const [paramName, paramDef] of entries) {
-      const hasValue = paramName in payload;
+      const hasValue = paramName in effectivePayload;
       if (!hasValue) {
         if (paramDef.required) {
           return { error: `Missing required parameter ${paramName}` };
@@ -224,7 +271,7 @@ export class CommandSubscriber {
         continue;
       }
 
-      const rawValue = payload[paramName];
+      const rawValue = effectivePayload[paramName];
       const coerced = this.coerceValue(paramDef, rawValue);
       if (coerced.error) {
         return { error: `${paramName}: ${coerced.error}` };
@@ -276,7 +323,7 @@ export class CommandSubscriber {
         return;
       }
 
-      const { params, error } = this.buildParams(command, payload);
+      const { params, error } = this.buildParams(command, payload, feature);
       if (error) {
         this.logger.warn(
           `Invalid command payload for ${parsed.commandName}: ${error}`,

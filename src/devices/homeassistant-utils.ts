@@ -243,6 +243,43 @@ export function percentageValueTemplate(propertyPath: string): string {
 }
 
 /**
+ * Like safeValueTemplate but applies | float only when the value path is defined (avoids silent 0.0 when missing).
+ */
+export function safeNumericFloatTemplate(propertyPath: string): string {
+  if (propertyPath === "value.value") {
+    return "{% if value_json is defined %}{% if value_json.properties is defined %}{% if value_json.properties.value is defined %}{% if value_json.properties.value.value is defined %}{{ value_json.properties.value.value | float }}{% endif %}{% endif %}{% endif %}{% endif %}";
+  }
+  if (propertyPath.includes("[") && propertyPath.includes("]")) {
+    const match = propertyPath.match(/^(\w+)\.(\w+)\[(\d+)\]$/);
+    if (match) {
+      const [, prop, subProp, index] = match;
+      return `{% if value_json is defined %}{% if value_json.properties is defined %}{% if value_json.properties.${prop} is defined %}{% if value_json.properties.${prop}.${subProp} is defined %}{% if value_json.properties.${prop}.${subProp} is iterable %}{% if value_json.properties.${prop}.${subProp}|length > ${index} %}{{ value_json.properties.${prop}.${subProp}[${index}] | float }}{% endif %}{% endif %}{% endif %}{% endif %}{% endif %}{% endif %}`;
+    }
+  }
+  const parts = propertyPath.split(".");
+  if (parts.length === 2) {
+    const [prop, subProp] = parts;
+    return `{% if value_json is defined %}{% if value_json.properties is defined %}{% if value_json.properties.${prop} is defined %}{% if value_json.properties.${prop}.${subProp} is defined %}{{ value_json.properties.${prop}.${subProp} | float }}{% endif %}{% endif %}{% endif %}{% endif %}`;
+  }
+  return safeValueTemplate(propertyPath);
+}
+
+/**
+ * Safe integer template for count sensors (avoids silent 0 when data is missing).
+ */
+export function safeNumericIntTemplate(propertyPath: string): string {
+  if (propertyPath === "value.value") {
+    return "{% if value_json is defined %}{% if value_json.properties is defined %}{% if value_json.properties.value is defined %}{% if value_json.properties.value.value is defined %}{{ value_json.properties.value.value | int }}{% endif %}{% endif %}{% endif %}{% endif %}";
+  }
+  const parts = propertyPath.split(".");
+  if (parts.length === 2) {
+    const [prop, subProp] = parts;
+    return `{% if value_json is defined %}{% if value_json.properties is defined %}{% if value_json.properties.${prop} is defined %}{% if value_json.properties.${prop}.${subProp} is defined %}{{ value_json.properties.${prop}.${subProp} | int }}{% endif %}{% endif %}{% endif %}{% endif %}`;
+  }
+  return safeValueTemplate(propertyPath);
+}
+
+/**
  * Transform a feature path into a user-friendly name.
  * Examples:
  * "heating.sensors.temperature.outside" -> "Outside Temperature"
@@ -463,6 +500,10 @@ export function generateTimeBasedComponents(
       timeComponentConfig.unit_of_measurement = unit;
     } else if (unit) {
       timeComponentConfig.unit_of_measurement = unit;
+    }
+
+    if (deviceClass === "energy") {
+      timeComponentConfig.state_class = "total_increasing";
     }
 
     components[timeComponentKey] = timeComponentConfig;

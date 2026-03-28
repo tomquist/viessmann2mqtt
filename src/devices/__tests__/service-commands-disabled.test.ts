@@ -89,9 +89,7 @@ describe("Service Technician Commands Disabled", () => {
       expect(orientationComponents.length).toBeGreaterThan(0);
       for (const component of orientationComponents) {
         expect(component.enabled_by_default).toBe(false);
-        expect(component.en).toBe(false);
         expect(component.entity_category).toBe("config");
-        expect(component.ent_cat).toBe("config");
       }
     });
 
@@ -149,11 +147,9 @@ describe("Service Technician Commands Disabled", () => {
         for (const component of altitudeComponents) {
           // Verify the component has the disabled property set
           expect(component.enabled_by_default).toBe(false);
-          expect(component.en).toBe(false);
           // entity_category should only be set for command components (number, select, etc.), not sensors
           if (["number", "select", "switch", "button", "text", "climate"].includes(component.platform)) {
             expect(component.entity_category).toBe("config");
-            expect(component.ent_cat).toBe("config");
           }
         }
       } else {
@@ -202,9 +198,7 @@ describe("Service Technician Commands Disabled", () => {
       expect(resetComponents.length).toBeGreaterThan(0);
       for (const component of resetComponents) {
         expect(component.enabled_by_default).toBe(false);
-        expect(component.en).toBe(false);
         expect(component.entity_category).toBe("config");
-        expect(component.ent_cat).toBe("config");
       }
     });
 
@@ -264,9 +258,7 @@ describe("Service Technician Commands Disabled", () => {
       expect(screedComponents.length).toBeGreaterThan(0);
       for (const component of screedComponents) {
         expect(component.enabled_by_default).toBe(false);
-        expect(component.en).toBe(false);
         expect(component.entity_category).toBe("config");
-        expect(component.ent_cat).toBe("config");
       }
     });
 
@@ -317,9 +309,7 @@ describe("Service Technician Commands Disabled", () => {
       expect(hysteresisComponents.length).toBeGreaterThan(0);
       for (const component of hysteresisComponents) {
         expect(component.enabled_by_default).toBe(false);
-        expect(component.en).toBe(false);
         expect(component.entity_category).toBe("config");
-        expect(component.ent_cat).toBe("config");
       }
     });
 
@@ -377,7 +367,6 @@ describe("Service Technician Commands Disabled", () => {
         for (const component of temperatureComponents) {
           // User-facing commands should NOT have enabled_by_default set to false
           expect(component.enabled_by_default).not.toBe(false);
-          expect(component.en).not.toBe(false);
         }
       } else {
         // If no components created, that's also fine - might enhance existing sensors
@@ -423,12 +412,10 @@ describe("Service Technician Commands Disabled", () => {
       for (const component of screedComponents) {
         // Sensor components for service technician features should be disabled
         expect(component.enabled_by_default).toBe(false);
-        expect(component.en).toBe(false);
         // Service technician sensor components should have entity_category: "diagnostic"
         // (Sensors cannot have entity_category: "config" - only command components can)
         if (component.platform === "sensor" || component.platform === "binary_sensor") {
           expect(component.entity_category).toBe("diagnostic");
-          expect(component.ent_cat).toBe("diagnostic");
         }
       }
     });
@@ -480,7 +467,6 @@ describe("Service Technician Commands Disabled", () => {
         for (const component of resetScheduleComponents) {
           // resetSchedule is user-facing, should NOT be disabled
           expect(component.enabled_by_default).not.toBe(false);
-          expect(component.en).not.toBe(false);
         }
       }
     });
