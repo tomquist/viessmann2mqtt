@@ -1,5 +1,8 @@
 # Changelog
 
+## [Next]
+
+
 ## [1.1.0] - 2026-03-28
 - API: handle non-array `installations` responses from the Viessmann API (avoids crashes on unexpected payload shapes).
 - Documentation: Home Assistant add-on terminology updated to **App** where relevant.
