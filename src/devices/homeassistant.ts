@@ -235,7 +235,10 @@ export class HomeAssistantDiscovery {
     }
 
     for (const [key, component] of Object.entries(filteredComponents)) {
-      component.object_id = key;
+      const platform = component.platform;
+      if (typeof platform === "string" && platform.length > 0) {
+        component.default_entity_id = `${platform}.${key}`;
+      }
     }
 
     return {

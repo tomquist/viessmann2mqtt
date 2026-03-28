@@ -108,10 +108,13 @@ describe("HomeAssistantDiscovery", () => {
       }
     });
 
-    it("should set object_id on each component to the component key", () => {
+    it("should set default_entity_id on each component (platform.slug)", () => {
       const config = discovery.generateDeviceDiscoveryConfig(device, features);
       for (const [key, component] of Object.entries(config.components)) {
-        expect(component.object_id).toBe(key);
+        expect(component).not.toHaveProperty("object_id");
+        expect(component.default_entity_id).toBe(
+          `${component.platform}.${key}`,
+        );
       }
     });
 
