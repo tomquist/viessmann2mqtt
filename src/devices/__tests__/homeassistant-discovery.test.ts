@@ -191,4 +191,80 @@ describe("HomeAssistantDiscovery", () => {
       expect(config.device.identifiers).toContain(expectedCompositeIdentifier);
     });
   });
+
+  describe("Statistics Feature Splitting", () => {
+    it("should split statistics features into separate sensors per numeric property", () => {
+      const accessor: DeviceAccessor = {
+        installationId: 1234567,
+        gatewayId: "TEST_GATEWAY_1234567890",
+        deviceId: "0",
+      };
+
+      const deviceModel: DeviceModel = {
+        id: "0",
+        modelId: "Test-Model",
+        gatewaySerial: "TEST_GATEWAY_1234567890",
+        boilerSerial: "",
+        boilerSerialEditor: "",
+        bmuSerial: null,
+        bmuSerialEditor: null,
+        createdAt: "",
+        editedAt: "",
+        status: "",
+        deviceType: "",
+        roles: [],
+      };
+
+      const makeFeature = (
+        featurePath: string,
+        properties: Record<string, any>,
+      ): Feature => ({
+        feature: featurePath,
+        gatewayId: accessor.gatewayId,
+        deviceId: accessor.deviceId,
+        timestamp: "2024-01-01T00:00:00.000Z",
+        isEnabled: true,
+        isReady: true,
+        apiVersion: 1,
+        uri: `https://example.test/${featurePath}`,
+        properties,
+        commands: {},
+      });
+
+      const features: Feature[] = [
+        makeFeature("heating.burners.0.statistics", {
+          hours: { type: "number", value: 123, unit: "hour" },
+          starts: { type: "number", value: 45, unit: "count" },
+        }),
+        makeFeature("heating.compressors.0.statistics", {
+          hours: { type: "number", value: 456, unit: "hour" },
+          starts: { type: "number", value: 78, unit: "count" },
+        }),
+      ];
+
+      const device = new HeatingDevice(accessor, [], deviceModel, features);
+      const discovery = new HomeAssistantDiscovery(
+        "homeassistant",
+        accessor.installationId,
+        accessor.gatewayId,
+        accessor.deviceId,
+      );
+
+      const config = discovery.generateDeviceDiscoveryConfig(device, features);
+
+      expect(config.components).toHaveProperty("burners_0_statistics_hours");
+      expect(config.components).toHaveProperty("burners_0_statistics_starts");
+      expect(config.components).toHaveProperty("compressors_0_statistics_hours");
+      expect(config.components).toHaveProperty("compressors_0_statistics_starts");
+
+      expect(config.components).not.toHaveProperty("burners_0_statistics");
+      expect(config.components).not.toHaveProperty("compressors_0_statistics");
+
+      const burnerHours = config.components["burners_0_statistics_hours"];
+      const burnerStarts = config.components["burners_0_statistics_starts"];
+
+      expect(burnerHours.unit_of_measurement).toBe("h");
+      expect(burnerStarts.unit_of_measurement).toBe("count");
+    });
+  });
 });

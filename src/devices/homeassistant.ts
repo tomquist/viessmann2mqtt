@@ -1984,6 +1984,79 @@ export class HomeAssistantDiscovery {
         continue;
       }
 
+      // Handle statistics-like features with multiple numeric properties (e.g. starts + hours)
+      const numericProperties = Object.entries(properties).filter(([, prop]) => {
+        if (!prop || typeof prop !== "object") return false;
+        if (!("value" in prop)) return false;
+        const typedProp = prop as { type?: string; value?: unknown };
+        return typedProp.type === "number" && typeof typedProp.value === "number";
+      });
+
+      if (featurePath.includes("statistics") && platform === "sensor" && numericProperties.length > 1) {
+        for (const [propKey, propValue] of numericProperties) {
+          const propertyPath = `${propKey}.value`;
+          const detection = device.detectDeviceClassAndUnit(
+            featurePath,
+            propertyPath,
+            properties,
+          );
+          const deviceClass = detection.deviceClass;
+          let unitOfMeasurement = detection.unitOfMeasurement;
+
+          const typedProp = propValue as { unit?: string };
+          if (!unitOfMeasurement && typedProp.unit) {
+            unitOfMeasurement = normalizeUnit(typedProp.unit, deviceClass);
+          }
+
+          const propComponentKey = `${componentKey}_${propKey}`;
+          const propName = propKey
+            .replace(/([A-Z])/g, " $1")
+            .replace(/^./, (str) => str.toUpperCase())
+            .trim();
+
+          const componentConfig: { platform: string; unique_id?: string; [key: string]: any } = {
+            platform,
+            unique_id: `viessmann_${this.installationId}_${this.gatewayId}_${this.deviceId}_${propComponentKey}`,
+            name: `${featureName} ${propName}`,
+            state_topic: `${this.baseTopic}/installations/${this.installationId}/gateways/${this.gatewayId}/devices/${this.deviceId}/features/${featurePath}`,
+            value_template: `{{ value_json.properties.${propKey}.value | float }}`,
+          };
+
+          if (deviceClass && unitOfMeasurement) {
+            componentConfig.device_class = deviceClass;
+            componentConfig.unit_of_measurement = unitOfMeasurement;
+          } else if (unitOfMeasurement) {
+            componentConfig.unit_of_measurement = unitOfMeasurement;
+          }
+
+          if (propKey.toLowerCase().includes("starts")) {
+            componentConfig.state_class = "total_increasing";
+          }
+
+          if (HomeAssistantDiscovery.isServiceTechnicianFeature(featurePath)) {
+            componentConfig.enabled_by_default = false;
+            componentConfig.en = false;
+            componentConfig.entity_category = "diagnostic";
+            componentConfig.ent_cat = "diagnostic";
+          } else {
+            const entityCategory = HomeAssistantDiscovery.determineEntityCategory(
+              featurePath,
+              platform,
+              deviceClass,
+              properties,
+            );
+            if (entityCategory) {
+              componentConfig.entity_category = entityCategory;
+              componentConfig.ent_cat = entityCategory;
+            }
+          }
+
+          components[propComponentKey] = componentConfig;
+        }
+
+        continue;
+      }
+
       // Check for time-based properties (day/week/month/year or currentDay/etc.)
       const timeBasedKeys = [
         "day",
