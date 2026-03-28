@@ -2,8 +2,10 @@ import { Device } from "./base.js";
 import { Feature } from "../models.js";
 import { CircuitClimate, CircuitSensor, DependentProperty, HeatingCurve, PropertyRetrieval, Sensor, getComplexComponentProperties } from "./discovery.js";
 import {
+  HomeAssistantNameTranslator,
   generateModeMappingTemplate,
-  getFeatureName,
+  getFeatureNameLocalized,
+  getLocalizedLabel,
   mapViessmannModesToHomeAssistant,
   normalizeUnit,
   safeValueTemplate,
@@ -158,7 +160,7 @@ export class HeatingDevice extends Device {
 
       const circuitName = circuit.getName;
       const circuitNumber = parseInt(itemId, 10) + 1;
-      const displayName = circuitName || `Circuit ${circuitNumber}`;
+      const displayName = circuitName || `${getLocalizedLabel("circuit", "Circuit")} ${circuitNumber}`;
 
       return {
         [componentKey]: {
@@ -200,13 +202,14 @@ export class HeatingDevice extends Device {
     deviceId: string,
     decoratedFeaturePaths: Set<string>,
     features: Feature[],
+    translator?: HomeAssistantNameTranslator,
   ): Record<string, { platform: string; unique_id?: string; [key: string]: any }> {
-    const components = super.generateHomeAssistantComponents(baseTopic, installationId, gatewayId, deviceId, decoratedFeaturePaths, features);
+    const components = super.generateHomeAssistantComponents(baseTopic, installationId, gatewayId, deviceId, decoratedFeaturePaths, features, translator);
     
     // Process heating-specific decorator-based components declaratively
-    Object.assign(components, this.generateCircuitSensorComponents(baseTopic, installationId, gatewayId, deviceId, features));
-    Object.assign(components, this.generateCircuitClimateComponents(baseTopic, installationId, gatewayId, deviceId, features));
-    Object.assign(components, this.generateHeatingCurveComponents(baseTopic, installationId, gatewayId, deviceId, features));
+    Object.assign(components, this.generateCircuitSensorComponents(baseTopic, installationId, gatewayId, deviceId, features, translator));
+    Object.assign(components, this.generateCircuitClimateComponents(baseTopic, installationId, gatewayId, deviceId, features, translator));
+    Object.assign(components, this.generateHeatingCurveComponents(baseTopic, installationId, gatewayId, deviceId, features, translator));
     
     return components;
   }
@@ -280,6 +283,7 @@ export class HeatingDevice extends Device {
     gatewayId: string,
     deviceId: string,
     features: Feature[],
+    translator?: HomeAssistantNameTranslator,
   ): Record<string, { platform: string; unique_id?: string; [key: string]: any }> {
     const complexProperties = getComplexComponentProperties(this);
     
@@ -292,6 +296,7 @@ export class HeatingDevice extends Device {
       features,
       ({ metadata, itemId, featurePath, componentKey, baseTopic, installationId, gatewayId, deviceId }) => {
         const circuit = new HeatingCircuit(this, itemId);
+        const localizedCircuitLabel = getLocalizedLabel("circuit", "Circuit", translator);
         
         // Use the declarative component builder from metadata
         return metadata.componentBuilder({
@@ -303,7 +308,7 @@ export class HeatingDevice extends Device {
           gatewayId,
           deviceId,
           circuit: {
-            getName: circuit.getName,
+            getName: circuit.getName || `${localizedCircuitLabel} ${parseInt(itemId, 10) + 1}`,
             getModes: circuit.getModes,
             getCurrentDesiredTemperature: circuit.getCurrentDesiredTemperature,
           },
@@ -322,6 +327,7 @@ export class HeatingDevice extends Device {
     gatewayId: string,
     deviceId: string,
     features: Feature[],
+    translator?: HomeAssistantNameTranslator,
   ): Record<string, { platform: string; unique_id?: string; [key: string]: any }> {
     const complexProperties = getComplexComponentProperties(this);
     
@@ -342,8 +348,10 @@ export class HeatingDevice extends Device {
         const circuit = new HeatingCircuit(this, itemId);
         const circuitName = circuit.getName;
         const circuitNumber = parseInt(itemId, 10) + 1;
-        const displayName = circuitName || `Circuit ${circuitNumber}`;
-        const baseName = getFeatureName(metadata.featurePathTemplate.replace(/N/g, "N")) || "Sensor";
+        const displayName = circuitName || `${getLocalizedLabel("circuit", "Circuit", translator)} ${circuitNumber}`;
+        const baseName =
+          getFeatureNameLocalized(metadata.featurePathTemplate.replace(/N/g, "N"), translator) ||
+          getLocalizedLabel("sensor", "Sensor", translator);
 
         const valueTemplate = metadata.valueTemplate || safeValueTemplate("value.value", metadata.platform === "binary_sensor");
 
@@ -380,6 +388,7 @@ export class HeatingDevice extends Device {
     gatewayId: string,
     deviceId: string,
     features: Feature[],
+    translator?: HomeAssistantNameTranslator,
   ): Record<string, { platform: string; unique_id?: string; [key: string]: any }> {
     const complexProperties = getComplexComponentProperties(this);
     
@@ -394,8 +403,10 @@ export class HeatingDevice extends Device {
         const circuit = new HeatingCircuit(this, itemId);
         const circuitName = circuit.getName;
         const circuitNumber = parseInt(itemId, 10) + 1;
-        const displayName = circuitName || `Circuit ${circuitNumber}`;
-        const baseName = getFeatureName(metadata.featurePathTemplate.replace(/N/g, "N")) || "Heating Curve";
+        const displayName = circuitName || `${getLocalizedLabel("circuit", "Circuit", translator)} ${circuitNumber}`;
+        const baseName =
+          getFeatureNameLocalized(metadata.featurePathTemplate.replace(/N/g, "N"), translator) ||
+          getLocalizedLabel("heating_curve", "Heating Curve", translator);
 
         const slopeKey = `${componentKey}_slope`;
         const shiftKey = `${componentKey}_shift`;
@@ -404,7 +415,7 @@ export class HeatingDevice extends Device {
           [slopeKey]: {
             platform: "sensor",
             unique_id: `viessmann_${installationId}_${gatewayId}_${deviceId}_${slopeKey}`,
-            name: `${displayName} ${baseName} Slope`,
+            name: `${displayName} ${baseName} ${getLocalizedLabel("slope", "Slope", translator)}`,
             state_topic: `${baseTopic}/installations/${installationId}/gateways/${gatewayId}/devices/${deviceId}/features/${featurePath}`,
             value_template: "{{ value_json.properties.slope.value | float }}",
             state_class: "measurement",
@@ -412,7 +423,7 @@ export class HeatingDevice extends Device {
           [shiftKey]: {
             platform: "sensor",
             unique_id: `viessmann_${installationId}_${gatewayId}_${deviceId}_${shiftKey}`,
-            name: `${displayName} ${baseName} Shift`,
+            name: `${displayName} ${baseName} ${getLocalizedLabel("shift", "Shift", translator)}`,
             state_topic: `${baseTopic}/installations/${installationId}/gateways/${gatewayId}/devices/${deviceId}/features/${featurePath}`,
             value_template: "{{ value_json.properties.shift.value | int }}",
             state_class: "measurement",

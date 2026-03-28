@@ -42,6 +42,11 @@ if bashio::config.has_value 'verbose'; then
   V2M_VERBOSE="$(bashio::config 'verbose')"
 fi
 
+V2M_LOCALE=""
+if bashio::config.has_value 'locale'; then
+  V2M_LOCALE="$(bashio::config 'locale')"
+fi
+
 V2M_CLIENT_SECRET=""
 if bashio::config.has_value 'client_secret'; then
   V2M_CLIENT_SECRET="$(bashio::config 'client_secret')"
@@ -152,6 +157,10 @@ fi
 
 if [[ -n "${V2M_VERBOSE}" ]]; then
   export V2M_VERBOSE
+fi
+
+if [[ -n "${V2M_LOCALE}" ]]; then
+  export V2M_LOCALE
 fi
 
 if [[ -n "${mqtt_username}" ]]; then

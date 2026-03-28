@@ -1,5 +1,9 @@
 import { Device as DeviceModel, Feature } from "../models.js";
-import { generateTimeBasedComponents, normalizeUnit } from "./homeassistant-utils.js";
+import {
+  HomeAssistantNameTranslator,
+  generateTimeBasedComponents,
+  normalizeUnit,
+} from "./homeassistant-utils.js";
 import { getComplexComponentProperties } from "./discovery.js";
 
 export interface DeviceAccessor {
@@ -145,11 +149,12 @@ export abstract class Device {
     deviceId: string,
     _decoratedFeaturePaths: Set<string>,
     features: Feature[],
+    translator?: HomeAssistantNameTranslator,
   ): Record<string, { platform: string; unique_id?: string; [key: string]: any }> {
     const components: Record<string, { platform: string; unique_id?: string; [key: string]: any }> = {};
     
     // Process time-based sensors (generic, available to all devices)
-    Object.assign(components, this.generateTimeBasedSensorComponents(baseTopic, installationId, gatewayId, deviceId, features));
+    Object.assign(components, this.generateTimeBasedSensorComponents(baseTopic, installationId, gatewayId, deviceId, features, translator));
     
     return components;
   }
@@ -165,6 +170,7 @@ export abstract class Device {
     gatewayId: string,
     deviceId: string,
     features: Feature[],
+    translator?: HomeAssistantNameTranslator,
   ): Record<string, { platform: string; unique_id?: string; [key: string]: any }> {
     const components: Record<string, { platform: string; unique_id?: string; [key: string]: any }> = {};
     const complexProperties = getComplexComponentProperties(this);
@@ -214,6 +220,7 @@ export abstract class Device {
         deviceId,
         baseTopic,
         features,
+        translator,
       );
 
       Object.assign(components, timeComponents);

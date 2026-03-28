@@ -41,6 +41,9 @@ configuration:
   mqtt_password:
     name: MQTT Password
     description: MQTT broker password (default uses Home Assistant's MQTT add-on)
+  locale:
+    name: Entity Name Locale
+    description: Locale for Home Assistant-facing entity names (default is 'en')
   verbose:
     name: Verbose Logging
     description: Enable detailed debug logging (default is false)

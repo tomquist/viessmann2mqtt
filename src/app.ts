@@ -72,6 +72,7 @@ async function run(): Promise<void> {
               installation.id,
               gateway.serial,
               device.id,
+              config.locale,
             );
 
             // CENTRAL FEATURE FETCHING: Fetch features once for this device

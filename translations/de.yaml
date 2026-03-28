@@ -41,6 +41,9 @@ configuration:
   mqtt_password:
     name: MQTT-Passwort
     description: MQTT-Broker-Passwort (Standardwert verwendet das MQTT-Add-on von Home Assistant)
+  locale:
+    name: Sprache für Entitätsnamen
+    description: Sprache für Home-Assistant-Entitätsnamen (Standardwert ist 'en')
   verbose:
     name: Ausführliche Protokollierung
     description: Detaillierte Debug-Protokollierung aktivieren (Standardwert ist false)

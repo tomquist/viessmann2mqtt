@@ -15,8 +15,11 @@ export {
 
 // Import utility functions for use in this file
 import {
+  HomeAssistantNameTranslator,
+  createHomeAssistantNameTranslator,
   generateTimeBasedComponents,
-  getFeatureName,
+  getFeatureNameLocalized,
+  getLocalizedLabel,
   normalizeUnit,
   percentageValueTemplate,
   safeValueTemplate,
@@ -74,16 +77,20 @@ export class HomeAssistantDiscovery {
 
   private readonly gatewayId: string;
 
+  private readonly nameTranslator: HomeAssistantNameTranslator;
+
   constructor(
     baseTopic: string,
     installationId: number,
     gatewayId: string,
     deviceId: string,
+    locale = "en",
   ) {
     this.baseTopic = baseTopic;
     this.installationId = installationId;
     this.gatewayId = gatewayId;
     this.deviceId = deviceId;
+    this.nameTranslator = createHomeAssistantNameTranslator(locale);
   }
 
   /**
@@ -172,6 +179,7 @@ export class HomeAssistantDiscovery {
       this.deviceId,
       decoratedFeaturePaths,
       features,
+      this.nameTranslator,
     );
     
     // Track features handled by device-specific components
@@ -262,7 +270,7 @@ export class HomeAssistantDiscovery {
       const componentKey = metadata.componentKey || methodName.replace(/^get/, "").replace(/([A-Z])/g, "_$1").toLowerCase().replace(/^_/, "");
 
       // Get feature name (always returns a string)
-      let featureName = getFeatureName(metadata.featurePath);
+      let featureName = getFeatureNameLocalized(metadata.featurePath, this.nameTranslator);
       
       // If this is a circuit feature, try to get the circuit name and prepend it
       const circuitName = this.getCircuitNameForFeature(metadata.featurePath, features);
@@ -534,6 +542,7 @@ export class HomeAssistantDiscovery {
         this.deviceId,
         this.baseTopic,
         features as Array<{ feature: string; properties?: Record<string, unknown> }>,
+        this.nameTranslator,
       );
 
       Object.assign(components, timeBasedComponents);
@@ -879,6 +888,7 @@ export class HomeAssistantDiscovery {
     featureName: string,
     commandName: string,
     paramName?: string,
+    translator?: HomeAssistantNameTranslator,
   ): string {
     const commandLabel = commandName
       .replace(/([A-Z])/g, " $1")
@@ -889,9 +899,11 @@ export class HomeAssistantDiscovery {
         .replace(/([A-Z])/g, " $1")
         .replace(/^./, (str) => str.toUpperCase())
         .trim();
-      return `${featureName} ${commandLabel} ${paramLabel}`.trim();
+      const separator = getLocalizedLabel("label_separator", " ", translator);
+      return `${featureName}${separator}${commandLabel}${separator}${paramLabel}`.trim();
     }
-    return `${featureName} ${commandLabel}`.trim();
+    const separator = getLocalizedLabel("label_separator", " ", translator);
+    return `${featureName}${separator}${commandLabel}`.trim();
   }
 
   private static getCommandStateConfig(
@@ -1265,7 +1277,7 @@ export class HomeAssistantDiscovery {
       const hasClimate = featureComponents.some(
         ({ component }) => component.platform === "climate",
       );
-      let featureName = getFeatureName(feature.feature);
+      let featureName = getFeatureNameLocalized(feature.feature, this.nameTranslator);
       
       // If this is a circuit feature, try to get the circuit name and prepend it
       const circuitName = this.getCircuitNameForFeature(feature.feature, features);
@@ -1295,10 +1307,12 @@ export class HomeAssistantDiscovery {
           const component: { platform: string; unique_id?: string; [key: string]: any } = {
             platform: "button",
             unique_id: `viessmann_${this.installationId}_${this.gatewayId}_${this.deviceId}_${componentKey}`,
-            name: HomeAssistantDiscovery.buildCommandComponentName(
-              featureName,
-              commandName,
-            ),
+              name: HomeAssistantDiscovery.buildCommandComponentName(
+                featureName,
+                commandName,
+                undefined,
+                this.nameTranslator,
+              ),
             command_topic: this.generateCommandTopic(feature.feature, commandName),
             payload_press: "{}",
           };
@@ -1344,6 +1358,7 @@ export class HomeAssistantDiscovery {
                   featureName,
                   commandName,
                   paramName,
+                  this.nameTranslator,
                 ),
                 command_topic: this.generateCommandTopic(
                   feature.feature,
@@ -1391,7 +1406,7 @@ export class HomeAssistantDiscovery {
                 const component: { platform: string; unique_id?: string; [key: string]: any } = {
                   platform: "sensor",
                   unique_id: `viessmann_${this.installationId}_${this.gatewayId}_${this.deviceId}_${scheduleSensorKey}`,
-                  name: `${featureName} Schedule`,
+                  name: `${featureName} ${getLocalizedLabel("schedule", "Schedule", this.nameTranslator)}`,
                   state_topic: `${this.baseTopic}/installations/${this.installationId}/gateways/${this.gatewayId}/devices/${this.deviceId}/features/${feature.feature}`,
                   // Use a simple state: count of days with entries, or "configured" if schedule exists
                   // Home Assistant sensors require simple string states (max 255 chars), not JSON objects
@@ -1529,6 +1544,7 @@ export class HomeAssistantDiscovery {
                 featureName,
                 commandName,
                 paramName,
+                this.nameTranslator,
               ),
               options: enumValues,
               command_topic: this.generateCommandTopic(
@@ -1555,6 +1571,7 @@ export class HomeAssistantDiscovery {
                 featureName,
                 commandName,
                 paramName,
+                this.nameTranslator,
               ),
               command_topic: this.generateCommandTopic(
                 feature.feature,
@@ -1582,6 +1599,7 @@ export class HomeAssistantDiscovery {
                 featureName,
                 commandName,
                 paramName,
+                this.nameTranslator,
               ),
               command_topic: this.generateCommandTopic(
                 feature.feature,
@@ -1612,6 +1630,7 @@ export class HomeAssistantDiscovery {
               featureName,
               commandName,
               paramName,
+              this.nameTranslator,
             ),
             command_topic: this.generateCommandTopic(
               feature.feature,
@@ -1664,6 +1683,7 @@ export class HomeAssistantDiscovery {
                   featureName,
                   commandName,
                   paramName,
+                  this.nameTranslator,
                 ),
                 options: enumValues,
                 command_topic: this.generateCommandTopic(
@@ -1693,6 +1713,7 @@ export class HomeAssistantDiscovery {
                   featureName,
                   commandName,
                   paramName,
+                  this.nameTranslator,
                 ),
                 command_topic: this.generateCommandTopic(
                   feature.feature,
@@ -1722,6 +1743,7 @@ export class HomeAssistantDiscovery {
                   featureName,
                   commandName,
                   paramName,
+                  this.nameTranslator,
                 ),
                 command_topic: this.generateCommandTopic(
                   feature.feature,
@@ -1852,7 +1874,7 @@ export class HomeAssistantDiscovery {
       // Generate component key and name
       const componentKey =
         HomeAssistantDiscovery.generateComponentKey(featurePath);
-      let featureName = getFeatureName(featurePath);
+      let featureName = getFeatureNameLocalized(featurePath, this.nameTranslator);
       
       // If this is a circuit feature, try to get the circuit name and prepend it
       const circuitName = this.getCircuitNameForFeature(featurePath, features);
@@ -1902,7 +1924,7 @@ export class HomeAssistantDiscovery {
           const countComponent: { platform: string; unique_id?: string; [key: string]: any } = {
             platform: "sensor",
             unique_id: `viessmann_${this.installationId}_${this.gatewayId}_${this.deviceId}_${componentKey}_count_${countIndex}`,
-            name: `${featureName} Count ${countIndex}`,
+            name: `${featureName} ${getLocalizedLabel("count", "Count", this.nameTranslator)} ${countIndex}`,
             state_topic: `${this.baseTopic}/installations/${this.installationId}/gateways/${this.gatewayId}/devices/${this.deviceId}/features/${featurePath}`,
             value_template: `{{ value_json.properties.${countKey}.value | int }}`,
             // Count sensors are numeric, so state_class is safe
@@ -1925,7 +1947,7 @@ export class HomeAssistantDiscovery {
 
       // Handle device.configuration - create individual entities for each property
       if (featurePath === "device.configuration") {
-        const baseFeatureName = getFeatureName(featurePath);
+        const baseFeatureName = getFeatureNameLocalized(featurePath, this.nameTranslator);
         
         for (const [propKey, propValue] of Object.entries(properties)) {
           if (!propValue || typeof propValue !== "object" || !("type" in propValue) || !("value" in propValue)) {
@@ -2128,10 +2150,15 @@ export class HomeAssistantDiscovery {
           const timeComponentKey = `${componentKey}_${timeKey}`;
           
           // Create sensor name with time unit (format: "Current Day", "Last Seven Days", etc.)
-          const formattedTimeKey = timeKey
+          const fallbackTimeKey = timeKey
             .replace(/([A-Z])/g, " $1")
             .replace(/^./, (str) => str.toUpperCase())
             .trim();
+          const formattedTimeKey = getLocalizedLabel(
+            timeKey,
+            fallbackTimeKey,
+            this.nameTranslator,
+          );
           const timeFeatureName = `${featureName} (${formattedTimeKey})`;
 
           const timeComponentConfig: { platform: string; unique_id?: string; [key: string]: any } = {

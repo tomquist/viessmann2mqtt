@@ -5,6 +5,10 @@ import { DeviceFactory } from "../factory.js";
 import { Feature } from "../../models.js";
 import { DeviceAccessor, DeviceModel } from "../base.js";
 import { loadAnonymizedDiagnosticsData } from "./test-helpers.js";
+import {
+  createHomeAssistantNameTranslator,
+  getFeatureNameLocalized,
+} from "../homeassistant-utils.js";
 
 // Load diagnostics data with anonymized serial numbers
 const diagnosticsData = loadAnonymizedDiagnosticsData();
@@ -265,6 +269,101 @@ describe("HomeAssistantDiscovery", () => {
 
       expect(burnerHours.unit_of_measurement).toBe("h");
       expect(burnerStarts.unit_of_measurement).toBe("count");
+    });
+  });
+
+  describe("Localization", () => {
+    it("should change localized names without changing unique_id or topics", () => {
+      const accessor: DeviceAccessor = {
+        installationId: 999999,
+        gatewayId: "TEST_GATEWAY_LOCALIZATION",
+        deviceId: "0",
+      };
+      const deviceModel: DeviceModel = {
+        id: "0",
+        modelId: "Test-Model",
+        gatewaySerial: accessor.gatewayId,
+        boilerSerial: "",
+        boilerSerialEditor: "",
+        bmuSerial: null,
+        bmuSerialEditor: null,
+        createdAt: "",
+        editedAt: "",
+        status: "",
+        deviceType: "",
+        roles: [],
+      };
+      const minimalFeatures: Feature[] = [{
+        feature: "heating.sensors.temperature.outside",
+        gatewayId: accessor.gatewayId,
+        deviceId: accessor.deviceId,
+        timestamp: "2024-01-01T00:00:00.000Z",
+        isEnabled: true,
+        isReady: true,
+        apiVersion: 1,
+        uri: "https://example.test/heating.sensors.temperature.outside",
+        properties: {
+          value: { type: "number", value: 12.3, unit: "celsius" },
+        },
+        commands: {},
+      }];
+      const testDevice = new HeatingDevice(accessor, [], deviceModel, minimalFeatures);
+
+      const discoveryEn = new HomeAssistantDiscovery(
+        "homeassistant",
+        accessor.installationId,
+        accessor.gatewayId,
+        accessor.deviceId,
+        "en",
+      );
+      const discoveryDe = new HomeAssistantDiscovery(
+        "homeassistant",
+        accessor.installationId,
+        accessor.gatewayId,
+        accessor.deviceId,
+        "de",
+      );
+
+      const configEn = discoveryEn.generateDeviceDiscoveryConfig(testDevice, minimalFeatures);
+      const configDe = discoveryDe.generateDeviceDiscoveryConfig(testDevice, minimalFeatures);
+
+      const outsideTempEn = Object.values(configEn.components).find(
+        (component) =>
+          component.state_topic?.endsWith("/features/heating.sensors.temperature.outside"),
+      );
+      const outsideTempDe = Object.values(configDe.components).find(
+        (component) =>
+          component.state_topic?.endsWith("/features/heating.sensors.temperature.outside"),
+      );
+
+      expect(outsideTempEn).toBeDefined();
+      expect(outsideTempDe).toBeDefined();
+      if (!outsideTempEn || !outsideTempDe) {
+        throw new Error("Missing outside temperature component");
+      }
+      expect(outsideTempEn.name).not.toBe(outsideTempDe.name);
+      expect(outsideTempEn.unique_id).toBe(outsideTempDe.unique_id);
+      expect(outsideTempEn.state_topic).toBe(outsideTempDe.state_topic);
+    });
+
+    it("should resolve feature names with fallback chain locale -> en -> data-points -> path fallback", () => {
+      const deTranslator = createHomeAssistantNameTranslator("de");
+
+      expect(
+        getFeatureNameLocalized("heating.sensors.temperature.outside", deTranslator),
+      ).toBe("Außentemperatur");
+
+      expect(
+        getFeatureNameLocalized("test.feature.only.in.en", deTranslator),
+      ).toBe("English Only Feature");
+
+      expect(
+        getFeatureNameLocalized("device.name", deTranslator),
+      ).toBe("Device Name");
+
+      expect(
+        getFeatureNameLocalized("custom.fooBar.baz", deTranslator),
+      ).toBe("Foo Bar Baz");
     });
   });
 });

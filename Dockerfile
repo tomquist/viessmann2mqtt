@@ -45,6 +45,7 @@ RUN if [ "$BUILD_HA_ADDON" = "true" ]; then \
 COPY --from=build /app/bin /app/bin
 COPY --from=build /app/node_modules /app/node_modules
 COPY --from=build /app/src/data-points.json /app/bin/
+COPY --from=build /app/src/locales /app/bin/locales
 
 # For regular builds: prune dev dependencies
 RUN if [ "$BUILD_HA_ADDON" != "true" ]; then \

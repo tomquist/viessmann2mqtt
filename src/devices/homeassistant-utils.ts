@@ -6,6 +6,7 @@ import { dirname, join } from "node:path";
 const currentFile = fileURLToPath(import.meta.url);
 const currentDir = dirname(currentFile);
 const dataPointsPath = join(currentDir, "../data-points.json");
+const localesDir = join(currentDir, "../locales/homeassistant");
 
 interface Feature {
   name: string;
@@ -25,6 +26,90 @@ interface DataPoints {
 }
 
 let dataPointsCache: Map<string, Feature> | null = null;
+let localeCache: Map<string, HomeAssistantLocale> | null = null;
+
+interface HomeAssistantLocale {
+  features?: Record<string, string>;
+  labels?: Record<string, string>;
+}
+
+export interface HomeAssistantNameTranslator {
+  locale: string;
+  getFeatureName: (featurePath: string) => string | undefined;
+  getLabel: (labelKey: string) => string | undefined;
+}
+
+function normalizeLocale(locale: string): string {
+  return locale.trim().toLowerCase().replace("_", "-").split("-")[0] || "en";
+}
+
+function getLocales(): Map<string, HomeAssistantLocale> {
+  if (localeCache === null) {
+    localeCache = new Map();
+    const supportedLocales = ["en", "de"];
+    for (const locale of supportedLocales) {
+      try {
+        const localePath = join(localesDir, `${locale}.json`);
+        const data = JSON.parse(readFileSync(localePath, "utf-8")) as HomeAssistantLocale;
+        localeCache.set(locale, data);
+      } catch {
+        localeCache.set(locale, {});
+      }
+    }
+  }
+  return localeCache;
+}
+
+function getLocaleFeatureTranslation(
+  localeData: HomeAssistantLocale | undefined,
+  featurePath: string,
+): string | undefined {
+  if (!localeData?.features) {
+    return undefined;
+  }
+  const exact = localeData.features[featurePath];
+  if (typeof exact === "string") {
+    return exact;
+  }
+  const normalizedPath = featurePath.replace(/\.circuits\.\d+\./g, ".circuits.N.");
+  const normalized = localeData.features[normalizedPath];
+  return typeof normalized === "string" ? normalized : undefined;
+}
+
+export function createHomeAssistantNameTranslator(
+  locale: string,
+): HomeAssistantNameTranslator {
+  const normalizedLocale = normalizeLocale(locale);
+  const locales = getLocales();
+  const selectedLocale = locales.get(normalizedLocale);
+  const englishLocale = locales.get("en");
+
+  return {
+    locale: normalizedLocale,
+    getFeatureName: (featurePath: string) => {
+      return (
+        getLocaleFeatureTranslation(selectedLocale, featurePath) ??
+        getLocaleFeatureTranslation(englishLocale, featurePath)
+      );
+    },
+    getLabel: (labelKey: string) => {
+      const selected = selectedLocale?.labels?.[labelKey];
+      if (typeof selected === "string") {
+        return selected;
+      }
+      const english = englishLocale?.labels?.[labelKey];
+      return typeof english === "string" ? english : undefined;
+    },
+  };
+}
+
+export function getLocalizedLabel(
+  labelKey: string,
+  fallback: string,
+  translator?: HomeAssistantNameTranslator,
+): string {
+  return translator?.getLabel(labelKey) ?? fallback;
+}
 
 /**
  * Load and cache data points for feature name/description lookup.
@@ -331,7 +416,18 @@ function transformFeaturePathToName(featurePath: string): string {
  * Falls back to transforming the feature path if title is not available.
  */
 export function getFeatureName(featurePath: string): string {
+  return getFeatureNameLocalized(featurePath);
+}
+
+export function getFeatureNameLocalized(
+  featurePath: string,
+  translator?: HomeAssistantNameTranslator,
+): string {
   const dataPoints = getDataPoints();
+  const translatedFeatureName = translator?.getFeatureName(featurePath);
+  if (translatedFeatureName) {
+    return translatedFeatureName;
+  }
   
   // Try exact match first
   let feature = dataPoints.get(featurePath);
@@ -420,6 +516,7 @@ export function generateTimeBasedComponents(
   deviceId: string,
   baseTopic: string,
   features?: Array<{ feature: string; properties?: Record<string, unknown> }>,
+  translator?: HomeAssistantNameTranslator,
 ): Record<string, { platform: string; unique_id?: string; [key: string]: any }> {
   const components: Record<string, { platform: string; unique_id?: string; [key: string]: any }> = {};
   
@@ -436,7 +533,7 @@ export function generateTimeBasedComponents(
 
   const unit = baseComponent.unit_of_measurement;
   const deviceClass = baseComponent.device_class;
-  let featureName = getFeatureName(featurePath);
+  let featureName = getFeatureNameLocalized(featurePath, translator);
   
   // If this is a circuit feature, try to get the circuit name and prepend it
   const circuitName = getCircuitNameForFeaturePath(featurePath, features);
@@ -448,7 +545,12 @@ export function generateTimeBasedComponents(
     const timePropertyPath = `${timeKey}.value[0]`;
     const timeValueTemplate = safeValueTemplate(timePropertyPath, false);
     const timeComponentKey = `${baseComponentKey}_${timeKey}`;
-    const timeFeatureName = `${featureName} (${timeKey.charAt(0).toUpperCase() + timeKey.slice(1)})`;
+    const localizedTimeLabel = getLocalizedLabel(
+      timeKey,
+      timeKey.charAt(0).toUpperCase() + timeKey.slice(1),
+      translator,
+    );
+    const timeFeatureName = `${featureName} (${localizedTimeLabel})`;
 
     const timeComponentConfig: { platform: string; unique_id?: string; [key: string]: any } = {
       platform: "sensor",

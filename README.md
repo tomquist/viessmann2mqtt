@@ -77,6 +77,7 @@ The app can be configured using these environment variables:
 - `V2M_MQTT_RETAIN` (optional): Retain MQTT messages. Default: `false`
 - `V2M_MQTT_DISCOVERY` (optional): Enable Home Assistant device discovery. Default: `true`
 - `V2M_MQTT_COMMANDS` (optional): Enable MQTT command subscription for device control. Default: `true`
+- `V2M_LOCALE` (optional): Locale for Home Assistant-facing entity names. Supported: `en`, `de`. Default: `en`
 - `V2M_VERBOSE` (optional): Set to `true` for more detailed logs. Default: `false`
 
 ## MQTT Topics

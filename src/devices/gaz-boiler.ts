@@ -1,7 +1,9 @@
 import { HeatingDevice } from "./heating.js";
 import { BurnerSensor, PropertyRetrieval, Sensor, TimeBasedSensor, getComplexComponentProperties } from "./discovery.js";
 import {
-  getFeatureName,
+  HomeAssistantNameTranslator,
+  getFeatureNameLocalized,
+  getLocalizedLabel,
   normalizeUnit,
   percentageValueTemplate,
   safeValueTemplate,
@@ -258,11 +260,20 @@ export class GazBoiler extends HeatingDevice {
     deviceId: string,
     decoratedFeaturePaths: Set<string>,
     features: Feature[],
+    translator?: HomeAssistantNameTranslator,
   ): Record<string, { platform: string; unique_id?: string; [key: string]: any }> {
-    const components = super.generateHomeAssistantComponents(baseTopic, installationId, gatewayId, deviceId, decoratedFeaturePaths, features);
+    const components = super.generateHomeAssistantComponents(
+      baseTopic,
+      installationId,
+      gatewayId,
+      deviceId,
+      decoratedFeaturePaths,
+      features,
+      translator,
+    );
     
     // Add burner sensor components
-    Object.assign(components, this.generateBurnerSensorComponents(baseTopic, installationId, gatewayId, deviceId, features));
+    Object.assign(components, this.generateBurnerSensorComponents(baseTopic, installationId, gatewayId, deviceId, features, translator));
     
     return components;
   }
@@ -277,6 +288,7 @@ export class GazBoiler extends HeatingDevice {
     gatewayId: string,
     deviceId: string,
     features: Feature[],
+    translator?: HomeAssistantNameTranslator,
   ): Record<string, { platform: string; unique_id?: string; [key: string]: any }> {
     const components: Record<string, { platform: string; unique_id?: string; [key: string]: any }> = {};
     const complexProperties = getComplexComponentProperties(this);
@@ -306,14 +318,17 @@ export class GazBoiler extends HeatingDevice {
 
         const componentKey = metadata.componentKeyTemplate.replace(/{id}/g, itemId);
         const burnerNumber = parseInt(itemId, 10) + 1;
-        let displayName = metadata.displayNameTemplate.replace(/{number}/g, burnerNumber.toString());
+        const burnerLabel = getLocalizedLabel("burner", "Burner", translator);
+        let displayName = metadata.displayNameTemplate
+          .replace("Burner", burnerLabel)
+          .replace(/{number}/g, burnerNumber.toString());
         
         // Try to get a better name from feature path if it contains modulation
         if (metadata.featurePathTemplate.includes("modulation")) {
           const normalizedPath = metadata.featurePathTemplate.replace(/N/g, "N");
-          const baseName = getFeatureName(normalizedPath);
+          const baseName = getFeatureNameLocalized(normalizedPath, translator);
           if (baseName && baseName !== "Sensor") {
-            displayName = `Burner ${burnerNumber} ${baseName}`;
+            displayName = `${burnerLabel} ${burnerNumber} ${baseName}`;
           }
         }
 

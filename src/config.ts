@@ -83,6 +83,7 @@ export function getConfig() {
     mqttTopic: stringEnvVar("V2M_MQTT_TOPIC", "viessmann"),
     mqttDiscovery: boolEnvVar("V2M_MQTT_DISCOVERY", true),
     mqttCommands: boolEnvVar("V2M_MQTT_COMMANDS", true),
+    locale: stringEnvVar("V2M_LOCALE", "en"),
     verbose: boolEnvVar("V2M_VERBOSE", false),
   };
 }

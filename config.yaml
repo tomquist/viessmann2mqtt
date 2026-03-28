@@ -30,4 +30,5 @@ schema:
   mqtt_uri: str?
   mqtt_username: str?
   mqtt_password: password?
+  locale: list(en|de)?
   verbose: bool?

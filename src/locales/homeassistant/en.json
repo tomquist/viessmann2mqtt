@@ -1,0 +1,27 @@
+{
+  "features": {
+    "heating.sensors.temperature.outside": "Outside Temperature",
+    "test.feature.only.in.en": "English Only Feature"
+  },
+  "labels": {
+    "label_separator": " ",
+    "sensor": "Sensor",
+    "circuit": "Circuit",
+    "burner": "Burner",
+    "heating_curve": "Heating Curve",
+    "slope": "Slope",
+    "shift": "Shift",
+    "schedule": "Schedule",
+    "count": "Count",
+    "day": "Day",
+    "week": "Week",
+    "month": "Month",
+    "year": "Year",
+    "currentDay": "Current Day",
+    "lastSevenDays": "Last Seven Days",
+    "currentMonth": "Current Month",
+    "lastMonth": "Last Month",
+    "currentYear": "Current Year",
+    "lastYear": "Last Year"
+  }
+}

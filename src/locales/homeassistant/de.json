@@ -1,0 +1,29 @@
+{
+  "features": {
+    "heating.sensors.temperature.outside": "Außentemperatur",
+    "heating.circuits.N.sensors.temperature.room": "Raumtemperatur",
+    "heating.circuits.N.sensors.temperature.supply": "Vorlauftemperatur",
+    "heating.circuits.N.heating.curve": "Heizkurve"
+  },
+  "labels": {
+    "label_separator": " ",
+    "sensor": "Sensor",
+    "circuit": "Heizkreis",
+    "burner": "Brenner",
+    "heating_curve": "Heizkurve",
+    "slope": "Neigung",
+    "shift": "Niveau",
+    "schedule": "Zeitplan",
+    "count": "Anzahl",
+    "day": "Tag",
+    "week": "Woche",
+    "month": "Monat",
+    "year": "Jahr",
+    "currentDay": "Aktueller Tag",
+    "lastSevenDays": "Letzte sieben Tage",
+    "currentMonth": "Aktueller Monat",
+    "lastMonth": "Letzter Monat",
+    "currentYear": "Aktuelles Jahr",
+    "lastYear": "Letztes Jahr"
+  }
+}

@@ -32,6 +32,7 @@ You must create a Viessmann API client ID in the Viessmann developer portal befo
 - `mqtt_retain`: Retain MQTT messages.
 - `mqtt_discovery`: Enable Home Assistant discovery.
 - `mqtt_commands`: Enable MQTT command subscription.
+- `locale`: Locale for Home Assistant-facing entity names (`en` or `de`, default `en`).
 - `verbose`: Enable verbose logging.
 
 ### Advanced (hidden) MQTT overrides
