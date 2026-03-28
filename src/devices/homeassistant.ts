@@ -852,6 +852,48 @@ export class HomeAssistantDiscovery {
     );
   }
 
+  /**
+   * Features with activate/deactivate (no params), setActive (boolean active), and boolean active property
+   * should expose a single switch instead of binary_sensor + buttons + separate setActive switch.
+   */
+  private static shouldConsolidateActivateDeactivateSetActive(
+    feature: ApiFeature,
+    executableCommands: Array<[string, Command]>,
+  ): boolean {
+    const hasNoParams = (cmd: Command) =>
+      Object.keys(cmd.params ?? {}).length === 0;
+    const activate = executableCommands.find(([n]) => n === "activate");
+    const deactivate = executableCommands.find(([n]) => n === "deactivate");
+    const setActive = executableCommands.find(([n]) => n === "setActive");
+    if (!activate || !deactivate || !setActive) {
+      return false;
+    }
+    if (!hasNoParams(activate[1]) || !hasNoParams(deactivate[1])) {
+      return false;
+    }
+    const hasBooleanActiveParam = Object.entries(
+      setActive[1].params ?? {},
+    ).some(
+      ([name, p]) =>
+        name === "active" && (p as { type?: string }).type === "boolean",
+    );
+    if (!hasBooleanActiveParam) {
+      return false;
+    }
+    const activeProp = feature.properties?.active as
+      | { type?: string; value?: unknown }
+      | undefined;
+    if (
+      !activeProp ||
+      activeProp.type !== "boolean" ||
+      typeof activeProp !== "object" ||
+      !("value" in activeProp)
+    ) {
+      return false;
+    }
+    return true;
+  }
+
   private generateCommandTopic(featurePath: string, commandName: string): string {
     return `${this.baseTopic}/installations/${this.installationId}/gateways/${this.gatewayId}/devices/${this.deviceId}/features/${featurePath}/commands/${commandName}/set`;
   }
@@ -1274,6 +1316,61 @@ export class HomeAssistantDiscovery {
       }
       
       const baseKey = HomeAssistantDiscovery.generateComponentKey(feature.feature);
+
+      if (
+        HomeAssistantDiscovery.shouldConsolidateActivateDeactivateSetActive(
+          feature,
+          executableCommands,
+        )
+      ) {
+        const stateConfig = HomeAssistantDiscovery.getCommandStateConfig(
+          feature,
+          "active",
+          feature.feature,
+          this.baseTopic,
+          this.installationId,
+          this.gatewayId,
+          this.deviceId,
+        );
+        if (stateConfig) {
+          const existing = components[baseKey];
+          if (existing?.platform === "binary_sensor") {
+            delete components[baseKey];
+          }
+          const isServiceCommand = HomeAssistantDiscovery.isServiceTechnicianCommand(
+            "setActive",
+            feature.feature,
+          );
+          const switchComponent: {
+            platform: string;
+            unique_id?: string;
+            [key: string]: unknown;
+          } = {
+            platform: "switch",
+            unique_id: `viessmann_${this.installationId}_${this.gatewayId}_${this.deviceId}_${baseKey}`,
+            name: featureName,
+            command_topic: this.generateCommandTopic(feature.feature, "setActive"),
+            payload_on: JSON.stringify({ active: true }),
+            payload_off: JSON.stringify({ active: false }),
+            optimistic: true,
+            ...stateConfig,
+          };
+          HomeAssistantDiscovery.addServiceCommandProperties(
+            switchComponent as {
+              platform: string;
+              unique_id?: string;
+              [key: string]: any;
+            },
+            isServiceCommand,
+          );
+          commandComponents[baseKey] = switchComponent as {
+            platform: string;
+            unique_id?: string;
+            [key: string]: any;
+          };
+          continue;
+        }
+      }
 
       for (const [commandName, command] of executableCommands) {
         if (commandName === "setMode" && hasClimate) {

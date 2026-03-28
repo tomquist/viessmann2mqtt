@@ -266,5 +266,22 @@ describe("HomeAssistantDiscovery", () => {
       expect(burnerHours.unit_of_measurement).toBe("h");
       expect(burnerStarts.unit_of_measurement).toBe("count");
     });
+
+    it("should consolidate activate/deactivate/setActive with boolean active into one optimistic switch", () => {
+      const config = discovery.generateDeviceDiscoveryConfig(device, features);
+      const baseKey = "dhw_oneTimeCharge";
+      const oneTime = config.components[baseKey];
+
+      expect(oneTime).toBeDefined();
+      expect(oneTime.platform).toBe("switch");
+      expect(oneTime.optimistic).toBe(true);
+      expect(oneTime.command_topic).toContain("/commands/setActive/set");
+      expect(oneTime.payload_on).toBe(JSON.stringify({ active: true }));
+      expect(oneTime.payload_off).toBe(JSON.stringify({ active: false }));
+      expect(oneTime.name).toBeDefined();
+      expect(config.components[`${baseKey}_activate`.toLowerCase()]).toBeUndefined();
+      expect(config.components[`${baseKey}_deactivate`.toLowerCase()]).toBeUndefined();
+      expect(config.components[`${baseKey}_setactive_active`.toLowerCase()]).toBeUndefined();
+    });
   });
 });

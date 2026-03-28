@@ -8,7 +8,7 @@
   "scripts": {
     "build": "tsc",
     "start": "node ./bin/app.js",
-    "dev": "tsx ./src/app.ts",
+    "dev": "tsx watch --env-file-if-exists .env ./src/app.ts",
     "fetch-diagnostics": "tsx ./scripts/fetch-diagnostics.ts",
     "lint:fix": "eslint --fix 'src/**/*.ts{,x}'",
     "lint": "tsc --noEmit && eslint 'src/**/*.ts{,x}'",

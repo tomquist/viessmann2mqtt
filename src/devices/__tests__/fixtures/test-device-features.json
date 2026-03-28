@@ -65,6 +65,48 @@
             "commands": {}
           },
           {
+            "feature": "heating.dhw.oneTimeCharge",
+            "gatewayId": "TEST_GATEWAY_1234567890",
+            "deviceId": "0",
+            "timestamp": "2024-01-01T00:00:00.000Z",
+            "isEnabled": true,
+            "isReady": true,
+            "apiVersion": 1,
+            "uri": "https://api.viessmann-climatesolutions.com/iot/v2/features/installations/1234567/gateways/TEST_GATEWAY_1234567890/devices/0/features/heating.dhw.oneTimeCharge",
+            "properties": {
+              "active": {
+                "type": "boolean",
+                "value": false
+              }
+            },
+            "commands": {
+              "activate": {
+                "uri": "https://api.viessmann-climatesolutions.com/iot/v2/features/installations/1234567/gateways/TEST_GATEWAY_1234567890/devices/0/features/heating.dhw.oneTimeCharge/commands/activate",
+                "name": "activate",
+                "isExecutable": true,
+                "params": {}
+              },
+              "deactivate": {
+                "uri": "https://api.viessmann-climatesolutions.com/iot/v2/features/installations/1234567/gateways/TEST_GATEWAY_1234567890/devices/0/features/heating.dhw.oneTimeCharge/commands/deactivate",
+                "name": "deactivate",
+                "isExecutable": true,
+                "params": {}
+              },
+              "setActive": {
+                "uri": "https://api.viessmann-climatesolutions.com/iot/v2/features/installations/1234567/gateways/TEST_GATEWAY_1234567890/devices/0/features/heating.dhw.oneTimeCharge/commands/setActive",
+                "name": "setActive",
+                "isExecutable": true,
+                "params": {
+                  "active": {
+                    "type": "boolean",
+                    "required": true,
+                    "constraints": {}
+                  }
+                }
+              }
+            }
+          },
+          {
             "feature": "heating.solar",
             "gatewayId": "TEST_GATEWAY_1234567890",
             "deviceId": "0",
