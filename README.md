@@ -46,9 +46,18 @@ This repository includes a Home Assistant App for running viessmann2mqtt directl
 
 See `viessmann2mqtt/DOCS.md` for the full app configuration reference.
 
-**Repository branch:** The default branch is **`develop`** (pre-release; `version: next` in `config.yaml`). To install **stable releases** only, add the repository with the **`main`** branch:
+#### Stable vs pre-release install
 
-`https://github.com/tomquist/viessmann2mqtt#main`
+Home Assistant reads add-on metadata from a **specific Git branch** of this repository. The default branch is **`develop`** (rolling pre-release).
+
+| Channel | Add-on repository URL | What you get |
+|--------|------------------------|--------------|
+| **Stable** (recommended) | `https://github.com/tomquist/viessmann2mqtt#main` | Versioned releases on `main` (e.g. `1.1.0`); pre-built images match `config.yaml` version. |
+| **Pre-release** | `https://github.com/tomquist/viessmann2mqtt#develop` | Latest commits on `develop`; `config.yaml` uses `version: next` and CI publishes the `next` image tag. |
+
+**How to switch or add the repo:** **Settings → Apps → App Store → ⋮ → Repositories** (or **Add repository**). Paste the URL **including** the `#main` or `#develop` fragment so Supervisor pins the branch you want.
+
+**Pre-release caveat:** The store version often stays `next` while commits move. Supervisor may not show an “update” badge for every push; use **Check for updates** on the repository, or **Rebuild** / **Reinstall** the app if you need the latest `develop` build.
 
 ## Home Assistant App Development
 
