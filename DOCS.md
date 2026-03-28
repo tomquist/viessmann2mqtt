@@ -2,6 +2,11 @@
 
 This add-on runs the Viessmann2MQTT service inside Home Assistant, polling the Viessmann API and publishing data to MQTT for Home Assistant discovery.
 
+## Repository branch (stable vs pre-release)
+
+- **Stable:** add this repository as `https://github.com/tomquist/viessmann2mqtt#main` so Home Assistant follows the **`main`** branch (versioned releases).
+- **Pre-release:** add `https://github.com/tomquist/viessmann2mqtt#develop` to follow **`develop`** (`version: next`, `next` container tag). If the version stays `next` while the branch advances, use **Check for updates** or **Rebuild** / **Reinstall** to pick up the latest build.
+
 ## Configuration
 
 ## Prerequisites
