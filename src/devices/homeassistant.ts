@@ -2349,6 +2349,23 @@ export class HomeAssistantDiscovery {
         }
       }
 
+      if (featurePath === "device.busTopology") {
+        components[componentKey] = {
+          platform: "sensor",
+          unique_id: `viessmann_${this.installationId}_${this.gatewayId}_${this.deviceId}_${componentKey}`,
+          name: featureName,
+          state_topic: `${this.baseTopic}/installations/${this.installationId}/gateways/${this.gatewayId}/devices/${this.deviceId}/features/${featurePath}`,
+          // Keep the HA state short and move the full topology into attributes.
+          value_template:
+            "{% if value_json.properties.value.value is defined %}{{ value_json.properties.value.value | count }} devices{% endif %}",
+          json_attributes_topic: `${this.baseTopic}/installations/${this.installationId}/gateways/${this.gatewayId}/devices/${this.deviceId}/features/${featurePath}`,
+          json_attributes_template:
+            "{{ {'devices': value_json.properties.value.value, 'count': value_json.properties.value.value | count} | tojson }}",
+          entity_category: "diagnostic",
+        };
+        continue;
+      }
+
       // Use device-specific detection logic (can be overridden by device subclasses)
        
       const detection = device.detectDeviceClassAndUnit(

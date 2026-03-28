@@ -431,6 +431,67 @@ describe("HomeAssistantDiscovery", () => {
       expect(sw!.optimistic).toBe(true);
     });
 
+    it("should summarize device bus topology and expose full payload as attributes", () => {
+      const accessor: DeviceAccessor = {
+        installationId: 1,
+        gatewayId: "GW",
+        deviceId: "0",
+      };
+      const deviceModel: DeviceModel = {
+        id: "0",
+        modelId: "M",
+        gatewaySerial: "GW",
+        boilerSerial: "",
+        boilerSerialEditor: "",
+        bmuSerial: null,
+        bmuSerialEditor: null,
+        createdAt: "",
+        editedAt: "",
+        status: "",
+        deviceType: "",
+        roles: [],
+      };
+      const features: Feature[] = [
+        {
+          feature: "device.busTopology",
+          gatewayId: "GW",
+          deviceId: "0",
+          timestamp: "",
+          isEnabled: true,
+          isReady: true,
+          apiVersion: 1,
+          uri: "",
+          properties: {
+            value: {
+              type: "array",
+              value: [
+                { busAddress: 1, busType: "CanInternal" },
+                { busAddress: 50, busType: "CanInternal" },
+              ],
+            },
+          },
+          commands: {},
+        },
+      ];
+
+      const dev = new HeatingDevice(
+        accessor,
+        deviceModel.roles,
+        deviceModel,
+        features,
+      );
+      const disc = new HomeAssistantDiscovery("mqtt", 1, "GW", "0");
+      const cfg = disc.generateDeviceDiscoveryConfig(dev, features);
+      const busTopology = cfg.components["device_busTopology"];
+
+      expect(busTopology).toBeDefined();
+      expect(busTopology.platform).toBe("sensor");
+      expect(busTopology.value_template).toContain("| count }} devices");
+      expect(busTopology.json_attributes_topic).toContain("/features/device.busTopology");
+      expect(busTopology.json_attributes_template).toContain("'devices': value_json.properties.value.value");
+      expect(busTopology.entity_category).toBe("diagnostic");
+    });
+
     it("should consolidate activate/deactivate/setActive with boolean active into one optimistic switch", () => {
       const config = discovery.generateDeviceDiscoveryConfig(device, features);
       const baseKey = "dhw_oneTimeCharge";
