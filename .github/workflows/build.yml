@@ -239,6 +239,13 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      - name: Smoke test add-on startup wiring
+        env:
+          IMAGE_REF: ${{ env.IMAGE_ADDON }}@${{ steps.build.outputs.digest }}
+        run: |
+          chmod +x ha_addon/test_env.sh
+          ./ha_addon/test_env.sh "${IMAGE_REF}"
+
       - name: Export digest
         run: |
           mkdir -p /tmp/addon-digests
