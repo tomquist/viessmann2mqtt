@@ -182,9 +182,11 @@ jobs:
           - platform: linux/amd64
             runner: ubuntu-24.04
             platform-id: amd64
+            build-from: ghcr.io/home-assistant/amd64-base:3.23
           - platform: linux/arm64
             runner: ubuntu-24.04-arm
             platform-id: arm64
+            build-from: ghcr.io/home-assistant/aarch64-base:3.23
     runs-on: ${{ matrix.runner }}
     steps:
       - name: Checkout
@@ -231,6 +233,7 @@ jobs:
           outputs: type=image,name=${{ env.IMAGE_ADDON }},push-by-digest=true,name-canonical=true,push=true
           build-args: |
             BUILD_HA_ADDON=true
+            BUILD_FROM=${{ matrix.build-from }}
             V2M_APP_VERSION=${{ steps.app_version.outputs.v }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
