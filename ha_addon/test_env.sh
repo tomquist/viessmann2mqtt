@@ -33,7 +33,7 @@ else
   docker pull "${IMAGE_REF}" >/dev/null
 fi
 
-container_id="$(docker run -d --rm \
+container_id="$(docker run -d \
   --name "${CONTAINER_NAME}" \
   -v "${OPTIONS_FILE}:/data/options.json:ro" \
   "${IMAGE_REF}")"
