@@ -27,7 +27,11 @@ cat > "${OPTIONS_FILE}" <<'JSON'
 JSON
 
 echo "Running add-on smoke test for image: ${IMAGE_REF}"
-docker pull "${IMAGE_REF}" >/dev/null
+if docker image inspect "${IMAGE_REF}" >/dev/null 2>&1; then
+  echo "Using already-present local image ${IMAGE_REF}"
+else
+  docker pull "${IMAGE_REF}" >/dev/null
+fi
 
 container_id="$(docker run -d --rm \
   --name "${CONTAINER_NAME}" \

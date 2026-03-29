@@ -173,7 +173,6 @@ jobs:
             $(printf '${{ env.IMAGE_STANDALONE }}@sha256:%s ' *)
 
   docker-addon-build:
-    if: github.event_name != 'pull_request'
     needs: test
     strategy:
       fail-fast: false
@@ -217,13 +216,32 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Log in to Container registry
+        if: github.event_name != 'pull_request'
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY_GHCR }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Build add-on image for PR smoke test (no push)
+        if: github.event_name == 'pull_request'
+        id: build_pr
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          platforms: ${{ matrix.platform }}
+          load: true
+          tags: viessmann2mqtt-addon-smoke:${{ matrix.platform-id }}
+          build-args: |
+            BUILD_HA_ADDON=true
+            BUILD_FROM=${{ matrix.build-from }}
+            V2M_APP_VERSION=${{ steps.app_version.outputs.v }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
       - name: Build and push by digest
+        if: github.event_name != 'pull_request'
         id: build
         uses: docker/build-push-action@v5
         with:
@@ -240,6 +258,15 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: Smoke test add-on startup wiring
+        if: github.event_name == 'pull_request'
+        env:
+          IMAGE_REF: viessmann2mqtt-addon-smoke:${{ matrix.platform-id }}
+        run: |
+          chmod +x ha_addon/test_env.sh
+          ./ha_addon/test_env.sh "${IMAGE_REF}"
+
+      - name: Smoke test add-on startup wiring (published digest)
+        if: github.event_name != 'pull_request'
         env:
           IMAGE_REF: ${{ env.IMAGE_ADDON }}@${{ steps.build.outputs.digest }}
         run: |
@@ -247,18 +274,21 @@ jobs:
           ./ha_addon/test_env.sh "${IMAGE_REF}"
 
       - name: Export digest
+        if: github.event_name != 'pull_request'
         run: |
           mkdir -p /tmp/addon-digests
           digest="${{ steps.build.outputs.digest }}"
           touch "/tmp/addon-digests/${digest#sha256:}"
 
       - name: Set platform name
+        if: github.event_name != 'pull_request'
         id: platform
         run: |
           SAFE_PLATFORM=$(echo "${{ matrix.platform }}" | sed 's|/|-|g')
           echo "name=$SAFE_PLATFORM" >> "$GITHUB_OUTPUT"
 
       - name: Upload digest
+        if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@v4
         with:
           name: digests-addon-${{ steps.platform.outputs.name }}
