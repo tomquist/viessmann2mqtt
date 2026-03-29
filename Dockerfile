@@ -59,6 +59,11 @@ RUN if [ "$BUILD_HA_ADDON" != "true" ]; then \
 # For Home Assistant addon: copy and setup run.sh
 COPY run.sh /run.sh
 RUN if [ "$BUILD_HA_ADDON" = "true" ]; then \
+      if [ ! -x /usr/bin/with-contenv ]; then \
+        echo "BUILD_HA_ADDON=true requires a Home Assistant base image (missing /usr/bin/with-contenv)." >&2; \
+        echo "Set BUILD_FROM to ghcr.io/home-assistant/<arch>-base:<version>." >&2; \
+        exit 1; \
+      fi; \
       chmod a+x /run.sh; \
     fi
 
