@@ -1,7 +1,11 @@
 # Changelog
 
 ## [Next]
-- Home Assistant: current power consumption features (e.g. `heating.compressors.N.power.consumption.current`) are now exposed as `power` sensors with the unit reported by the API (`W`/`kW`) and `state_class: measurement`, instead of `kWh` energy counters (#18).
+- Home Assistant: energy vs. power sensors are now derived from the unit the API reports instead of the feature path (#18):
+  - Current readings like `heating.compressors.N.power.consumption.current`, `heating.power.consumption.current` and `heating.heat.production.current` are `power` sensors (`W`/`kW`, `state_class: measurement`) instead of `kWh` energy counters.
+  - Cumulative counters like `heating.power.production.cumulative` and `heating.solar.power.production` are `energy` sensors instead of `power` sensors with a `kWh` unit.
+  - `heating.power.purchase/sold.*`, `pcc.transfer.*.total` and other power/energy features without a matching path now get the `power`/`energy` device class.
+  - Values reported in `wattHour` are shown as `Wh` instead of being labelled `kWh` (previously off by a factor of 1000).
 
 
 ## [1.1.1] - 2026-03-29

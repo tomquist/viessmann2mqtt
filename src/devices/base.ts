@@ -2,6 +2,29 @@ import { Device as DeviceModel, Feature } from "../models.js";
 import { generateTimeBasedComponents, normalizeUnit } from "./homeassistant-utils.js";
 import { getComplexComponentProperties } from "./discovery.js";
 
+const ENERGY_UNITS = ["Wh", "kWh", "MWh"];
+const POWER_UNITS = ["W", "kW", "MW"];
+
+/**
+ * Classify an API unit as energy (e.g. kilowattHour) or power (e.g. kilowatt).
+ * Rate units such as "kilowattHour/year" are not classified.
+ */
+function classifyEnergyOrPowerUnit(
+  unit: string,
+): { deviceClass: "energy" | "power"; unitOfMeasurement: string } | undefined {
+  if (unit.includes("/")) {
+    return undefined;
+  }
+  const normalized = normalizeUnit(unit);
+  if (normalized && ENERGY_UNITS.includes(normalized)) {
+    return { deviceClass: "energy", unitOfMeasurement: normalized };
+  }
+  if (normalized && POWER_UNITS.includes(normalized)) {
+    return { deviceClass: "power", unitOfMeasurement: normalized };
+  }
+  return undefined;
+}
+
 export interface DeviceAccessor {
   installationId: number;
   gatewayId: string;
@@ -243,6 +266,31 @@ export abstract class Device {
   }
 
   /**
+   * Determine energy vs. power from the unit reported by the API.
+   * Falls back to the given device class when no energy or power unit is reported.
+   */
+  private detectEnergyOrPower(
+    propertyPath: string,
+    properties: Record<string, unknown>,
+    fallbackDeviceClass: "energy" | "power",
+  ): { deviceClass?: string; unitOfMeasurement?: string } {
+    const unitPropertyKeys = [propertyPath.split(".")[0], "day", "currentDay", "value", "week", "month", "year"];
+    for (const key of unitPropertyKeys) {
+      const prop = properties[key];
+      if (prop && typeof prop === "object" && "unit" in prop && typeof prop.unit === "string") {
+        const classified = classifyEnergyOrPowerUnit(prop.unit);
+        if (classified) {
+          return classified;
+        }
+      }
+    }
+    // Default to kWh for energy; for power leave the unit to the generic fallback
+    return fallbackDeviceClass === "energy"
+      ? { deviceClass: "energy", unitOfMeasurement: "kWh" }
+      : { deviceClass: "power" };
+  }
+
+  /**
    * Generic device class and unit detection logic.
    * This is the default implementation that can be called by device subclasses.
    */
@@ -360,66 +408,17 @@ export abstract class Device {
           }
         }
       } else if (featurePath.includes("power")) {
-        deviceClass = "energy";
-        // Check multiple possible property paths for unit: day, currentDay, value, etc.
-        let foundUnit = false;
-        const unitPropertyKeys = ["day", "currentDay", "value", "week", "month", "year"];
-        for (const key of unitPropertyKeys) {
-          if (properties[key] && typeof properties[key] === "object" && "unit" in properties[key]) {
-            const unit = (properties[key] as Record<string, unknown>).unit as string;
-            const normalizedUnit = normalizeUnit(unit, "energy");
-            if (normalizedUnit) {
-              unitOfMeasurement = normalizedUnit;
-              foundUnit = true;
-              break;
-            }
-            // Instantaneous readings (e.g. ...power.consumption.current) report a power unit
-            const powerUnit = normalizeUnit(unit);
-            if (powerUnit && ["W", "kW", "MW"].includes(powerUnit)) {
-              deviceClass = "power";
-              unitOfMeasurement = powerUnit;
-              foundUnit = true;
-              break;
-            }
-          }
-        }
-        // If no unit found, use default kWh for energy sensors
-        if (!foundUnit) {
-          unitOfMeasurement = "kWh";
-        }
+        // Energy counters report e.g. kilowattHour, instantaneous readings
+        // (e.g. ...power.consumption.current) report kilowatt
+        ({ deviceClass, unitOfMeasurement } = this.detectEnergyOrPower(propertyPath, properties, "energy"));
       }
     } else if (featurePath.includes("production")) {
       if (featurePath.includes("power")) {
-        deviceClass = "power";
-        // Try to get unit from the detected property
-        const powerPropKey = propertyPath.split(".")[0];
-        if (properties[powerPropKey] && typeof properties[powerPropKey] === "object") {
-          const prop = properties[powerPropKey] as Record<string, unknown>;
-          if ("unit" in prop) {
-            const unit = prop.unit as string;
-            unitOfMeasurement = normalizeUnit(unit) || "W";
-          }
-        }
+        // Power production can be a current reading (watt) or a cumulative counter (kilowattHour)
+        ({ deviceClass, unitOfMeasurement } = this.detectEnergyOrPower(propertyPath, properties, "power"));
       } else if (featurePath.includes("heat")) {
-        deviceClass = "energy";
-        // Check multiple possible property paths for unit: day, currentDay, value, etc.
-        let foundUnit = false;
-        const unitPropertyKeys = ["day", "currentDay", "value", "week", "month", "year"];
-        for (const key of unitPropertyKeys) {
-          if (properties[key] && typeof properties[key] === "object" && "unit" in properties[key]) {
-            const unit = (properties[key] as Record<string, unknown>).unit as string;
-            const normalizedUnit = normalizeUnit(unit, "energy");
-            if (normalizedUnit) {
-              unitOfMeasurement = normalizedUnit;
-              foundUnit = true;
-              break;
-            }
-          }
-        }
-        // If no unit found, use default kWh for energy sensors
-        if (!foundUnit) {
-          unitOfMeasurement = "kWh";
-        }
+        // Heat production can be a counter (kilowattHour) or a current reading (watt)
+        ({ deviceClass, unitOfMeasurement } = this.detectEnergyOrPower(propertyPath, properties, "energy"));
       }
     }
 
@@ -463,6 +462,14 @@ export abstract class Device {
         deviceClass = "volume";
       } else if (unitOfMeasurement === "L/h") {
         deviceClass = "volume_flow_rate";
+      } else if (POWER_UNITS.includes(unitOfMeasurement)) {
+        deviceClass = "power";
+      } else if (
+        ENERGY_UNITS.includes(unitOfMeasurement) &&
+        /cumulative|cumulated|\.total$/i.test(featurePath)
+      ) {
+        // Only counters get the energy class; other Wh values (e.g. battery capacity) are not totals
+        deviceClass = "energy";
       }
     }
 

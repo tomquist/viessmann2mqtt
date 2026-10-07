@@ -49,7 +49,9 @@ function getDataPoints(): Map<string, Feature> {
  */
 const UNIT_MAP: Record<string, string> = {
   // Energy units
+  watthour: "Wh",
   kilowatthour: "kWh",
+  megawatthour: "MWh",
   "kilowatthour/year": "kWh",
   
   // Volume units
@@ -106,7 +108,7 @@ export function normalizeUnit(unit: string | null | undefined, deviceClass?: str
   if (deviceClass === "energy") {
     const normalized = UNIT_MAP[unitLower];
     // Only return if it's a valid energy unit (kWh, Wh, etc.)
-    if (normalized && (normalized.endsWith("Wh") || normalized.endsWith("h"))) {
+    if (normalized && normalized.endsWith("Wh")) {
       return normalized;
     }
     // If unit is not a valid energy unit (e.g., cubicMeter), return undefined
