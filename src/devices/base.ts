@@ -373,6 +373,14 @@ export abstract class Device {
               foundUnit = true;
               break;
             }
+            // Instantaneous readings (e.g. ...power.consumption.current) report a power unit
+            const powerUnit = normalizeUnit(unit);
+            if (powerUnit && ["W", "kW", "MW"].includes(powerUnit)) {
+              deviceClass = "power";
+              unitOfMeasurement = powerUnit;
+              foundUnit = true;
+              break;
+            }
           }
         }
         // If no unit found, use default kWh for energy sensors

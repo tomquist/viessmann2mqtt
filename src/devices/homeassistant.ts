@@ -2434,6 +2434,8 @@ export class HomeAssistantDiscovery {
 
       if (platform === "sensor" && deviceClass === "energy") {
         componentConfig.state_class = "total_increasing";
+      } else if (platform === "sensor" && deviceClass === "power") {
+        componentConfig.state_class = "measurement";
       }
 
       // Add state_class for numeric sensors to help Home Assistant recognize them as numbers

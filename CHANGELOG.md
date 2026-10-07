@@ -1,6 +1,7 @@
 # Changelog
 
 ## [Next]
+- Home Assistant: current power consumption features (e.g. `heating.compressors.N.power.consumption.current`) are now exposed as `power` sensors with the unit reported by the API (`W`/`kW`) and `state_class: measurement`, instead of `kWh` energy counters (#18).
 
 
 ## [1.1.1] - 2026-03-29

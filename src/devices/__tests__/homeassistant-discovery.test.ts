@@ -371,6 +371,81 @@ describe("HomeAssistantDiscovery", () => {
       expect(cfg.components[weekKey!].entity_category).toBe("diagnostic");
     });
 
+    it("should expose current power consumption as power measurement, not energy", () => {
+      const accessor: DeviceAccessor = {
+        installationId: 1,
+        gatewayId: "GW",
+        deviceId: "0",
+      };
+      const deviceModel: DeviceModel = {
+        id: "0",
+        modelId: "M",
+        gatewaySerial: "GW",
+        boilerSerial: "",
+        boilerSerialEditor: "",
+        bmuSerial: null,
+        bmuSerialEditor: null,
+        createdAt: "",
+        editedAt: "",
+        status: "",
+        deviceType: "",
+        roles: [],
+      };
+      const makeFeature = (feature: string, properties: Record<string, unknown>) => ({
+        feature,
+        gatewayId: "GW",
+        deviceId: "0",
+        timestamp: "",
+        isEnabled: true,
+        isReady: true,
+        apiVersion: 1,
+        uri: "",
+        properties,
+        commands: {},
+      });
+      const powerFeatures = [
+        makeFeature("heating.compressors.0.power.consumption.current", {
+          value: { type: "number", value: 0.8, unit: "kilowatt" },
+        }),
+        makeFeature("heating.heatingRod.power.consumption.current", {
+          value: { type: "number", value: 120, unit: "watt" },
+        }),
+        makeFeature("heating.heatingRod.power.consumption.currentYear.dhw", {
+          value: { type: "number", value: 42, unit: "kilowattHour" },
+        }),
+      ] as unknown as Feature[];
+      const dev = new HeatingDevice(
+        accessor,
+        deviceModel.roles,
+        deviceModel,
+        powerFeatures,
+      );
+      const disc = new HomeAssistantDiscovery("mqtt", 1, "GW", "0");
+      const cfg = disc.generateDeviceDiscoveryConfig(dev, powerFeatures);
+
+      const compressor = cfg.components["compressors_0_power_consumption_current"];
+      expect(compressor).toMatchObject({
+        device_class: "power",
+        unit_of_measurement: "kW",
+        state_class: "measurement",
+      });
+
+      const heatingRod = cfg.components["heatingRod_power_consumption_current"];
+      expect(heatingRod).toMatchObject({
+        device_class: "power",
+        unit_of_measurement: "W",
+        state_class: "measurement",
+      });
+
+      // "currentYear" is a cumulative counter and must stay an energy sensor
+      const yearly = cfg.components["heatingRod_power_consumption_currentYear_dhw"];
+      expect(yearly).toMatchObject({
+        device_class: "energy",
+        unit_of_measurement: "kWh",
+        state_class: "total_increasing",
+      });
+    });
+
     it("should set optimistic on boolean command switches", () => {
       const accessor: DeviceAccessor = {
         installationId: 1,
