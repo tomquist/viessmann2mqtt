@@ -377,11 +377,6 @@ export class HomeAssistantDiscovery {
         /kilowatthour|watthour|megawatthour/i.test(unit),
         deviceClass: "energy",
       },
-      // Power production: power device class
-      {
-        match: (path) => path.includes("production") && path.includes("power"),
-        deviceClass: "power",
-      },
       // Energy units: energy device class
       {
         match: (_path, unit) =>
@@ -2237,12 +2232,10 @@ export class HomeAssistantDiscovery {
           (featurePath.includes("consumption") &&
             featurePath.includes("power") &&
             "energy") ||
+          // Day/week/month values are amounts per period, so production is energy, not power
           (featurePath.includes("production") &&
-            featurePath.includes("heat") &&
+            (featurePath.includes("heat") || featurePath.includes("power")) &&
             "energy") ||
-          (featurePath.includes("production") &&
-            featurePath.includes("power") &&
-            "power") ||
           undefined;
         const finalTimeUnit =
           timeBasedUnit ||
@@ -2434,6 +2427,8 @@ export class HomeAssistantDiscovery {
 
       if (platform === "sensor" && deviceClass === "energy") {
         componentConfig.state_class = "total_increasing";
+      } else if (platform === "sensor" && deviceClass === "power") {
+        componentConfig.state_class = "measurement";
       }
 
       // Add state_class for numeric sensors to help Home Assistant recognize them as numbers

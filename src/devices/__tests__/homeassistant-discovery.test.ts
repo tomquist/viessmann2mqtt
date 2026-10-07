@@ -371,6 +371,98 @@ describe("HomeAssistantDiscovery", () => {
       expect(cfg.components[weekKey!].entity_category).toBe("diagnostic");
     });
 
+    it("should derive energy vs. power from the unit reported by the API", () => {
+      const accessor: DeviceAccessor = {
+        installationId: 1,
+        gatewayId: "GW",
+        deviceId: "0",
+      };
+      const deviceModel: DeviceModel = {
+        id: "0",
+        modelId: "M",
+        gatewaySerial: "GW",
+        boilerSerial: "",
+        boilerSerialEditor: "",
+        bmuSerial: null,
+        bmuSerialEditor: null,
+        createdAt: "",
+        editedAt: "",
+        status: "",
+        deviceType: "",
+        roles: [],
+      };
+      const makeFeature = (feature: string, properties: Record<string, unknown>) => ({
+        feature,
+        gatewayId: "GW",
+        deviceId: "0",
+        timestamp: "",
+        isEnabled: true,
+        isReady: true,
+        apiVersion: 1,
+        uri: "",
+        properties,
+        commands: {},
+      });
+      const value = (v: number, unit: string) => ({
+        status: { type: "string", value: "connected" },
+        value: { type: "number", value: v, unit },
+      });
+      // Units as reported by real devices
+      const cases: Array<[string, Record<string, unknown>, string, Record<string, string>]> = [
+        ["heating.compressors.0.power.consumption.current", value(0.8, "kilowatt"),
+          "compressors_0_power_consumption_current", { device_class: "power", unit_of_measurement: "kW", state_class: "measurement" }],
+        ["heating.power.consumption.current", value(1.2, "kilowatt"),
+          "power_consumption_current", { device_class: "power", unit_of_measurement: "kW", state_class: "measurement" }],
+        ["heating.compressors.0.heat.production.current", value(3100, "watt"),
+          "compressors_0_heat_production_current", { device_class: "power", unit_of_measurement: "W", state_class: "measurement" }],
+        ["heating.heat.production.current", value(3.1, "kilowatt"),
+          "heat_production_current", { device_class: "power", unit_of_measurement: "kW", state_class: "measurement" }],
+        ["heating.power.production.cumulative", { value: { type: "number", value: 1234, unit: "kilowattHour" } },
+          "power_production_cumulative", { device_class: "energy", unit_of_measurement: "kWh", state_class: "total_increasing" }],
+        ["heating.power.purchase.cumulative", { value: { type: "number", value: 4321, unit: "kilowattHour" } },
+          "power_purchase_cumulative", { device_class: "energy", unit_of_measurement: "kWh", state_class: "total_increasing" }],
+        ["heating.power.sold.current", { value: { type: "number", value: 500, unit: "watt" } },
+          "power_sold_current", { device_class: "power", unit_of_measurement: "W", state_class: "measurement" }],
+        ["heating.fuelCell.managers.energy.prediction.power.consumption", { value: { type: "number", value: 900, unit: "wattHour" } },
+          "fuelCell_managers_energy_prediction_power_consumption", { device_class: "energy", unit_of_measurement: "Wh" }],
+        ["heating.heatingRod.power.consumption.currentYear.dhw", { value: { type: "number", value: 42, unit: "kilowattHour" } },
+          "heatingRod_power_consumption_currentYear_dhw", { device_class: "energy", unit_of_measurement: "kWh", state_class: "total_increasing" }],
+      ];
+      const testFeatures = [
+        ...cases.map(([feature, properties]) => makeFeature(feature, properties)),
+        makeFeature("heating.solar.power.production", {
+          day: { type: "array", value: [5], unit: "kilowattHour" },
+          week: { type: "array", value: [30], unit: "kilowattHour" },
+        }),
+        makeFeature("ess.battery.usedAverage", {
+          averageUsableSystemEnergy: { type: "number", value: 9000, unit: "wattHour" },
+        }),
+      ] as unknown as Feature[];
+      const dev = new HeatingDevice(
+        accessor,
+        deviceModel.roles,
+        deviceModel,
+        testFeatures,
+      );
+      const disc = new HomeAssistantDiscovery("mqtt", 1, "GW", "0");
+      const cfg = disc.generateDeviceDiscoveryConfig(dev, testFeatures);
+
+      for (const [, , key, expected] of cases) {
+        expect(cfg.components[key], key).toMatchObject(expected);
+      }
+
+      // Day/week production totals are energy, not power
+      for (const key of ["solar_power_production_day", "solar_power_production_week"]) {
+        expect(cfg.components[key], key).toMatchObject({ device_class: "energy", unit_of_measurement: "kWh" });
+      }
+
+      // Stored energy is not a counter and must not become a total_increasing energy sensor
+      const battery = cfg.components["ess_battery_usedAverage"];
+      expect(battery.unit_of_measurement).toBe("Wh");
+      expect(battery.device_class).toBeUndefined();
+      expect(battery.state_class).not.toBe("total_increasing");
+    });
+
     it("should set optimistic on boolean command switches", () => {
       const accessor: DeviceAccessor = {
         installationId: 1,
